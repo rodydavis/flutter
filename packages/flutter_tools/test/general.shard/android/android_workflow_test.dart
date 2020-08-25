@@ -5,24 +5,24 @@
 import 'dart:async';
 
 import 'package:file/memory.dart';
-import 'package:flutter_tools/src/base/file_system.dart';
-import 'package:flutter_tools/src/base/io.dart';
-import 'package:flutter_tools/src/base/os.dart';
 import 'package:flutter_tools/src/android/android_sdk.dart';
 import 'package:flutter_tools/src/android/android_workflow.dart';
+import 'package:flutter_tools/src/base/file_system.dart';
+import 'package:flutter_tools/src/base/io.dart';
 import 'package:flutter_tools/src/base/logger.dart';
+import 'package:flutter_tools/src/base/os.dart';
+import 'package:flutter_tools/src/base/platform.dart';
 import 'package:flutter_tools/src/base/terminal.dart' show AnsiTerminal, OutputPreferences;
 import 'package:flutter_tools/src/base/user_messages.dart';
 import 'package:flutter_tools/src/base/version.dart';
 import 'package:flutter_tools/src/doctor.dart';
-
 import 'package:mockito/mockito.dart';
-import 'package:platform/platform.dart';
 import 'package:process/process.dart';
 
 import '../../src/common.dart';
 import '../../src/context.dart';
 import '../../src/mocks.dart' show MockAndroidSdk, MockProcess, MockProcessManager, MockStdio;
+import '../../src/testbed.dart';
 
 class MockAndroidSdkVersion extends Mock implements AndroidSdkVersion {}
 class MockOperatingSystemUtils extends Mock implements OperatingSystemUtils {}
@@ -56,6 +56,17 @@ void main() {
         stdout.map<List<int>>((String s) => s.codeUnits));
     return (List<String> command) => MockProcess(stdout: stdoutStream);
   }
+
+  testWithoutContext('AndroidWorkflow handles a null AndroidSDK', () {
+    final AndroidWorkflow androidWorkflow = AndroidWorkflow(
+      featureFlags: TestFeatureFlags(),
+      androidSdk: null,
+    );
+
+    expect(androidWorkflow.canLaunchDevices, false);
+    expect(androidWorkflow.canListDevices, false);
+    expect(androidWorkflow.canListEmulators, false);
+  });
 
   testUsingContext('licensesAccepted returns LicensesAccepted.unknown if cannot find sdkmanager', () async {
     processManager.canRunSucceeds = false;
@@ -169,32 +180,6 @@ void main() {
     Stdio: () => stdio,
   }));
 
-  testUsingContext('runLicenseManager errors for version < 26', () async {
-    when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
-    when(sdk.sdkManagerVersion).thenReturn('25.0.0');
-
-    expect(AndroidLicenseValidator.runLicenseManager(), throwsToolExit(message: 'To update, run'));
-  }, overrides: Map<Type, Generator>.unmodifiable(<Type, Generator>{
-    AndroidSdk: () => sdk,
-    FileSystem: () => fs,
-    ProcessManager: () => processManager,
-    Platform: () => FakePlatform()..environment = <String, String>{'HOME': '/home/me'},
-    Stdio: () => stdio,
-  }));
-
-  testUsingContext('runLicenseManager errors correctly for null version', () async {
-    when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
-    when(sdk.sdkManagerVersion).thenReturn(null);
-
-    expect(AndroidLicenseValidator.runLicenseManager(), throwsToolExit(message: 'To update, run'));
-  }, overrides: Map<Type, Generator>.unmodifiable(<Type, Generator>{
-    AndroidSdk: () => sdk,
-    FileSystem: () => fs,
-    ProcessManager: () => processManager,
-    Platform: () => FakePlatform()..environment = <String, String>{'HOME': '/home/me'},
-    Stdio: () => stdio,
-  }));
-
   testUsingContext('runLicenseManager errors when sdkmanager is not found', () async {
     when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
     processManager.canRunSucceeds = false;
@@ -246,7 +231,7 @@ void main() {
     when(sdk.platformToolsAvailable).thenReturn(true);
 
     // Test with invalid SDK and build tools
-    when(mockSdkVersion.sdkLevel).thenReturn(26);
+    when(mockSdkVersion.sdkLevel).thenReturn(28);
     when(mockSdkVersion.buildToolsVersion).thenReturn(Version(26, 0, 3));
     when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
     when(sdk.latestVersion).thenReturn(mockSdkVersion);
@@ -256,6 +241,7 @@ void main() {
       sdk.sdkManagerPath,
       kAndroidSdkMinVersion,
       kAndroidSdkBuildToolsMinVersion.toString(),
+      FakePlatform(),
     );
 
     final AndroidValidator androidValidator = AndroidValidator(
@@ -276,7 +262,7 @@ void main() {
     );
 
     // Test with valid SDK but invalid build tools
-    when(mockSdkVersion.sdkLevel).thenReturn(28);
+    when(mockSdkVersion.sdkLevel).thenReturn(29);
     when(mockSdkVersion.buildToolsVersion).thenReturn(Version(28, 0, 2));
 
     validationResult = await androidValidator.validate();
@@ -305,7 +291,7 @@ void main() {
     // Mock a pass through scenario to reach _checkJavaVersion()
     when(sdk.licensesAvailable).thenReturn(true);
     when(sdk.platformToolsAvailable).thenReturn(true);
-    when(mockSdkVersion.sdkLevel).thenReturn(28);
+    when(mockSdkVersion.sdkLevel).thenReturn(29);
     when(mockSdkVersion.buildToolsVersion).thenReturn(Version(28, 0, 3));
     when(sdk.sdkManagerPath).thenReturn('/foo/bar/sdkmanager');
     when(sdk.latestVersion).thenReturn(mockSdkVersion);

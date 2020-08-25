@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
@@ -719,7 +722,7 @@ void main() {
       equalsIgnoringHashCodes(
         'Duplicate keys found.\n'
         'If multiple keyed nodes exist as children of another node, they must have unique keys.\n'
-        'Stack(alignment: AlignmentDirectional.topStart, textDirection: ltr, fit: loose, overflow: clip) has multiple children with key [GlobalKey#00000 problematic].'
+        'Stack(alignment: AlignmentDirectional.topStart, textDirection: ltr, fit: loose) has multiple children with key [GlobalKey#00000 problematic].'
       ),
     );
   });
@@ -889,7 +892,7 @@ void main() {
         'The specific parent that did not update after having one or more children forcibly '
         'removed due to GlobalKey reparenting is:\n'
         '- Stack(alignment: AlignmentDirectional.topStart, textDirection: ltr, fit: loose, '
-        'overflow: clip, renderObject: RenderStack#00000)\n'
+        'renderObject: RenderStack#00000)\n'
         'A GlobalKey can only be specified on one widget at a time in the widget tree.'
       ),
     );
@@ -1024,7 +1027,7 @@ void main() {
     );
   });
 
-  testWidgets('GlobalKey - dettach and re-attach child to different parents', (WidgetTester tester) async {
+  testWidgets('GlobalKey - detach and re-attach child to different parents', (WidgetTester tester) async {
     await tester.pumpWidget(Directionality(
       textDirection: TextDirection.ltr,
       child: Center(
@@ -1057,6 +1060,52 @@ void main() {
     });
     element.removeChild(childElement.renderObject as RenderBox);
     element.createChild(0, after: null);
+  });
+
+  testWidgets('GlobalKey - re-attach child to new parents, and the old parent is deactivated(unmounted)', (WidgetTester tester) async {
+    // This is a regression test for https://github.com/flutter/flutter/issues/62055
+    const Key key1 = GlobalObjectKey('key1');
+    const Key key2 = GlobalObjectKey('key2');
+    StateSetter setState;
+    int tabBarViewCnt = 2;
+    TabController tabController = TabController(length: tabBarViewCnt, vsync: const TestVSync(),);
+
+    await tester.pumpWidget(Directionality(
+      textDirection: TextDirection.ltr,
+      child: StatefulBuilder(
+        builder: (BuildContext context, StateSetter setter) {
+          setState = setter;
+          return TabBarView(
+            controller: tabController,
+            children: <Widget>[
+              if (tabBarViewCnt > 0) const Text('key1', key: key1,),
+              if (tabBarViewCnt > 1) const Text('key2', key: key2,),
+            ],
+          );
+        },
+      ),
+    ));
+
+    expect(tabController.index, 0);
+
+    // switch tabs 0 -> 1
+    setState((){
+      tabController.index = 1;
+    });
+
+    await tester.pump(const Duration(seconds: 1)); // finish the animation
+
+    expect(tabController.index, 1);
+
+    // rebuild TabBarView that only have the 1st page with GlobalKey 'key1'
+    setState((){
+      tabBarViewCnt = 1;
+      tabController = TabController(length: tabBarViewCnt, vsync: const TestVSync(),);
+    });
+
+    await tester.pump(const Duration(seconds: 1)); // finish the animation
+
+    expect(tabController.index, 0);
   });
 
   testWidgets('Defunct setState throws exception', (WidgetTester tester) async {
@@ -1283,6 +1332,218 @@ void main() {
     expect(isBuildDecorated, isTrue);
     expect(isDidChangeDependenciesDecorated, isFalse);
   });
+  group('BuildContext.debugDoingbuild', () {
+    testWidgets('StatelessWidget', (WidgetTester tester) async {
+      bool debugDoingBuildOnBuild;
+      await tester.pumpWidget(
+        StatelessWidgetSpy(
+          onBuild: (BuildContext context) {
+            debugDoingBuildOnBuild = context.debugDoingBuild;
+          },
+        ),
+      );
+
+      final Element context = tester.element(find.byType(StatelessWidgetSpy));
+
+      expect(context.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnBuild, isTrue);
+    });
+    testWidgets('StatefulWidget', (WidgetTester tester) async {
+      bool debugDoingBuildOnBuild;
+      bool debugDoingBuildOnInitState;
+      bool debugDoingBuildOnDidChangeDependencies;
+      bool debugDoingBuildOnDidUpdateWidget;
+      bool debugDoingBuildOnDispose;
+      bool debugDoingBuildOnDeactivate;
+
+      await tester.pumpWidget(
+        Inherited(
+          0,
+          child: StatefulWidgetSpy(
+            onInitState: (BuildContext context) {
+              debugDoingBuildOnInitState = context.debugDoingBuild;
+            },
+            onDidChangeDependencies: (BuildContext context) {
+              context.dependOnInheritedWidgetOfExactType<Inherited>();
+              debugDoingBuildOnDidChangeDependencies = context.debugDoingBuild;
+            },
+            onBuild: (BuildContext context) {
+              debugDoingBuildOnBuild = context.debugDoingBuild;
+            },
+          ),
+        ),
+      );
+
+      final Element context = tester.element(find.byType(StatefulWidgetSpy));
+
+      expect(context.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnBuild, isTrue);
+      expect(debugDoingBuildOnInitState, isFalse);
+      expect(debugDoingBuildOnDidChangeDependencies, isFalse);
+
+      await tester.pumpWidget(
+        Inherited(
+          1,
+          child: StatefulWidgetSpy(
+            onDidUpdateWidget: (BuildContext context) {
+              debugDoingBuildOnDidUpdateWidget = context.debugDoingBuild;
+            },
+            onDidChangeDependencies: (BuildContext context) {
+              debugDoingBuildOnDidChangeDependencies = context.debugDoingBuild;
+            },
+            onBuild: (BuildContext context) {
+              debugDoingBuildOnBuild = context.debugDoingBuild;
+            },
+            onDispose: (BuildContext context) {
+              debugDoingBuildOnDispose = context.debugDoingBuild;
+            },
+            onDeactivate: (BuildContext context) {
+              debugDoingBuildOnDeactivate = context.debugDoingBuild;
+            },
+          ),
+        ),
+      );
+
+      expect(context.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnBuild, isTrue);
+      expect(debugDoingBuildOnDidUpdateWidget, isFalse);
+      expect(debugDoingBuildOnDidChangeDependencies, isFalse);
+      expect(debugDoingBuildOnDeactivate, isNull);
+      expect(debugDoingBuildOnDispose, isNull);
+
+      await tester.pumpWidget(Container());
+
+      expect(context.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnDispose, isFalse);
+      expect(debugDoingBuildOnDeactivate, isFalse);
+    });
+    testWidgets('RenderObjectWidget', (WidgetTester tester) async {
+      bool debugDoingBuildOnCreateRenderObject;
+      bool debugDoingBuildOnUpdateRenderObject;
+      bool debugDoingBuildOnDidUnmountRenderObject;
+      final ValueNotifier<int> notifier = ValueNotifier<int>(0);
+
+      BuildContext spyContext;
+
+      Widget build() {
+        return ValueListenableBuilder<int>(
+          valueListenable: notifier,
+          builder: (BuildContext context, int value, Widget child) {
+            return Inherited(value, child: child);
+          },
+          child: RenderObjectWidgetSpy(
+            onCreateRenderObject: (BuildContext context) {
+              spyContext = context;
+              context.dependOnInheritedWidgetOfExactType<Inherited>();
+              debugDoingBuildOnCreateRenderObject = context.debugDoingBuild;
+            },
+            onUpdateRenderObject: (BuildContext context) {
+              debugDoingBuildOnUpdateRenderObject = context.debugDoingBuild;
+            },
+            onDidUnmountRenderObject: () {
+              debugDoingBuildOnDidUnmountRenderObject = spyContext.debugDoingBuild;
+            },
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build());
+
+      spyContext = tester.element(find.byType(RenderObjectWidgetSpy));
+
+      expect(spyContext.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnCreateRenderObject, isTrue);
+      expect(debugDoingBuildOnUpdateRenderObject, isNull);
+      expect(debugDoingBuildOnDidUnmountRenderObject, isNull);
+
+      await tester.pumpWidget(build());
+
+      expect(spyContext.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnUpdateRenderObject, isTrue);
+      expect(debugDoingBuildOnDidUnmountRenderObject, isNull);
+
+      notifier.value++;
+      debugDoingBuildOnUpdateRenderObject = false;
+      await tester.pump();
+
+      expect(spyContext.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnUpdateRenderObject, isTrue);
+      expect(debugDoingBuildOnDidUnmountRenderObject, isNull);
+
+      await tester.pumpWidget(Container());
+
+      expect(spyContext.debugDoingBuild, isFalse);
+      expect(debugDoingBuildOnDidUnmountRenderObject, isFalse);
+    });
+  });
+
+  testWidgets('A widget whose element has an invalid visitChildren implementation triggers a useful error message', (WidgetTester tester) async {
+    final GlobalKey key = GlobalKey();
+    await tester.pumpWidget(Container(child: _WidgetWithNoVisitChildren(_StatefulLeaf(key: key))));
+    (key.currentState as _StatefulLeafState).markNeedsBuild();
+    await tester.pumpWidget(Container());
+    final dynamic exception = tester.takeException();
+    expect(
+      exception.message,
+      equalsIgnoringHashCodes(
+        'Tried to build dirty widget in the wrong build scope.\n'
+        'A widget which was marked as dirty and is still active was scheduled to be built, '
+        'but the current build scope unexpectedly does not contain that widget.\n'
+        'Sometimes this is detected when an element is removed from the widget tree, but '
+        'the element somehow did not get marked as inactive. In that case, it might be '
+        'caused by an ancestor element failing to implement visitChildren correctly, thus '
+        'preventing some or all of its descendants from being correctly deactivated.\n'
+        'The root of the build scope was:\n'
+        '  [root]\n'
+        'The offending element (which does not appear to be a descendant of the root of '
+        'the build scope) was:\n'
+        '  _StatefulLeaf-[GlobalKey#00000]'
+      )
+    );
+  });
+}
+
+class _WidgetWithNoVisitChildren extends StatelessWidget {
+  const _WidgetWithNoVisitChildren(this.child, { Key key }) :
+    super(key: key);
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => child;
+
+  @override
+  _WidgetWithNoVisitChildrenElement createElement() => _WidgetWithNoVisitChildrenElement(this);
+}
+
+class _WidgetWithNoVisitChildrenElement extends StatelessElement {
+  _WidgetWithNoVisitChildrenElement(_WidgetWithNoVisitChildren widget): super(widget);
+
+  @override
+  void visitChildren(ElementVisitor visitor) {
+    // This implementation is intentionally buggy, to test that an error message is
+    // shown when this situation occurs.
+    // The superclass has the correct implementation (calling `visitor(_child)`), so
+    // we don't call it here.
+  }
+}
+
+class _StatefulLeaf extends StatefulWidget {
+  const _StatefulLeaf({ Key key }) : super(key: key);
+
+  @override
+  State<_StatefulLeaf> createState() => _StatefulLeafState();
+}
+
+class _StatefulLeafState extends State<_StatefulLeaf> {
+  void markNeedsBuild() {
+    setState(() { });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox.shrink();
+  }
 }
 
 class Decorate extends StatefulWidget {
@@ -1354,8 +1615,10 @@ class NullChildElement extends Element {
 
   @override
   void performRebuild() { }
-}
 
+  @override
+  bool get debugDoingBuild => throw UnimplementedError();
+}
 
 class DirtyElementWithCustomBuildOwner extends Element {
   DirtyElementWithCustomBuildOwner(BuildOwner buildOwner, Widget widget)
@@ -1371,6 +1634,9 @@ class DirtyElementWithCustomBuildOwner extends Element {
 
   @override
   bool get dirty => true;
+
+  @override
+  bool get debugDoingBuild => throw UnimplementedError();
 }
 
 class Inherited extends InheritedWidget {
@@ -1472,5 +1738,118 @@ class StatefulElementSpy extends StatefulElement {
       _statefulWidget.onElementRebuild(this);
     }
     super.rebuild();
+  }
+}
+
+class StatelessWidgetSpy extends StatelessWidget {
+  const StatelessWidgetSpy({
+    Key key,
+    @required this.onBuild,
+  })  : assert(onBuild != null),
+        super(key: key);
+
+  final void Function(BuildContext) onBuild;
+
+  @override
+  Widget build(BuildContext context) {
+    onBuild(context);
+    return Container();
+  }
+}
+
+class StatefulWidgetSpy extends StatefulWidget {
+  const StatefulWidgetSpy({
+    Key key,
+    this.onBuild,
+    this.onInitState,
+    this.onDidChangeDependencies,
+    this.onDispose,
+    this.onDeactivate,
+    this.onDidUpdateWidget,
+  })  : super(key: key);
+
+  final void Function(BuildContext) onBuild;
+  final void Function(BuildContext) onInitState;
+  final void Function(BuildContext) onDidChangeDependencies;
+  final void Function(BuildContext) onDispose;
+  final void Function(BuildContext) onDeactivate;
+  final void Function(BuildContext) onDidUpdateWidget;
+
+  @override
+  _StatefulWidgetSpyState createState() => _StatefulWidgetSpyState();
+}
+
+class _StatefulWidgetSpyState extends State<StatefulWidgetSpy> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInitState?.call(context);
+  }
+
+  @override
+  void deactivate() {
+    super.deactivate();
+    widget.onDeactivate?.call(context);
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+    widget.onDispose?.call(context);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    widget.onDidChangeDependencies?.call(context);
+  }
+
+  @override
+  void didUpdateWidget(StatefulWidgetSpy oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    widget.onDidUpdateWidget?.call(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    widget.onBuild?.call(context);
+    return Container();
+  }
+}
+
+class RenderObjectWidgetSpy extends LeafRenderObjectWidget {
+  const RenderObjectWidgetSpy({
+    Key key,
+    this.onCreateRenderObject,
+    this.onUpdateRenderObject,
+    this.onDidUnmountRenderObject,
+  })  : super(key: key);
+
+  final void Function(BuildContext) onCreateRenderObject;
+  final void Function(BuildContext) onUpdateRenderObject;
+  final void Function() onDidUnmountRenderObject;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) {
+    onCreateRenderObject?.call(context);
+    return FakeLeafRenderObject();
+  }
+
+  @override
+  void updateRenderObject(BuildContext context, RenderObject renderObject) {
+    onUpdateRenderObject?.call(context);
+  }
+
+  @override
+  void didUnmountRenderObject(RenderObject renderObject) {
+    super.didUnmountRenderObject(renderObject);
+    onDidUnmountRenderObject?.call();
+  }
+}
+
+class FakeLeafRenderObject extends RenderBox {
+  @override
+  void performLayout() {
+    size = constraints.biggest;
   }
 }

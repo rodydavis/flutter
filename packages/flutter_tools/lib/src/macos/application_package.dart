@@ -12,7 +12,7 @@ import '../globals.dart' as globals;
 import '../ios/plist_parser.dart';
 import '../project.dart';
 
-/// Tests whether a [FileSystemEntity] is an macOS bundle directory
+/// Tests whether a [FileSystemEntity] is an macOS bundle directory.
 bool _isBundleDirectory(FileSystemEntity entity) =>
     entity is Directory && entity.path.endsWith('.app');
 
@@ -66,7 +66,7 @@ abstract class MacOSApp extends ApplicationPackage {
       globals.printError('Invalid prebuilt macOS app. Does not contain Info.plist.');
       return null;
     }
-    final Map<String, dynamic> propertyValues = PlistParser.instance.parseFile(plistPath);
+    final Map<String, dynamic> propertyValues = globals.plistParser.parseFile(plistPath);
     final String id = propertyValues[PlistParser.kCFBundleIdentifierKey] as String;
     final String executableName = propertyValues[PlistParser.kCFBundleExecutable] as String;
     if (id == null) {

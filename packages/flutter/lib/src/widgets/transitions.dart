@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
@@ -16,6 +18,8 @@ export 'package:flutter/rendering.dart' show RelativeRect;
 
 /// A widget that rebuilds when the given [Listenable] changes value.
 ///
+/// {@youtube 560 315 https://www.youtube.com/watch?v=LKKgYpC-EPQ}
+///
 /// [AnimatedWidget] is most commonly used with [Animation] objects, which are
 /// [Listenable], but it can be used with any [Listenable], including
 /// [ChangeNotifier] and [ValueNotifier].
@@ -23,41 +27,16 @@ export 'package:flutter/rendering.dart' show RelativeRect;
 /// [AnimatedWidget] is most useful for widgets that are otherwise stateless. To
 /// use [AnimatedWidget], simply subclass it and implement the build function.
 ///
-///{@tool snippet}
+///{@tool dartpad --template=stateful_widget_material_ticker}
 ///
 /// This code defines a widget called `Spinner` that spins a green square
 /// continually. It is built with an [AnimatedWidget].
 ///
-/// ```dart
-/// class Spinner extends StatefulWidget {
-///   @override
-///   _SpinnerState createState() => _SpinnerState();
-/// }
+/// ```dart imports
+/// import 'dart:math' as math;
+/// ```
 ///
-/// class _SpinnerState extends State<Spinner> with TickerProviderStateMixin {
-///   AnimationController _controller;
-///
-///   @override
-///   void initState() {
-///     super.initState();
-///     _controller = AnimationController(
-///       duration: const Duration(seconds: 10),
-///       vsync: this,
-///     )..repeat();
-///   }
-///
-///   @override
-///   void dispose() {
-///     _controller.dispose();
-///     super.dispose();
-///   }
-///
-///   @override
-///   Widget build(BuildContext context) {
-///     return SpinningContainer(controller: _controller);
-///   }
-/// }
-///
+/// ```dart preamble
 /// class SpinningContainer extends AnimatedWidget {
 ///   const SpinningContainer({Key key, AnimationController controller})
 ///       : super(key: key, listenable: controller);
@@ -71,6 +50,30 @@ export 'package:flutter/rendering.dart' show RelativeRect;
 ///       child: Container(width: 200.0, height: 200.0, color: Colors.green),
 ///     );
 ///   }
+/// }
+/// ```
+///
+/// ```dart
+/// AnimationController _controller;
+///
+/// @override
+/// void initState() {
+///   super.initState();
+///   _controller = AnimationController(
+///     duration: const Duration(seconds: 10),
+///     vsync: this,
+///   )..repeat();
+/// }
+///
+/// @override
+/// void dispose() {
+///   _controller.dispose();
+///   super.dispose();
+/// }
+///
+/// @override
+/// Widget build(BuildContext context) {
+///   return SpinningContainer(controller: _controller);
 /// }
 /// ```
 /// {@end-tool}
@@ -725,6 +728,60 @@ class RelativeRectTween extends Tween<RelativeRect> {
 /// animated by a [CurvedAnimation] set to [Curves.elasticInOut]:
 /// {@animation 300 378 https://flutter.github.io/assets-for-api-docs/assets/widgets/positioned_transition.mp4}
 ///
+/// {@tool dartpad --template=stateful_widget_material_ticker}
+///
+/// The following code implements the [PositionedTransition] as seen in the video
+/// above:
+///
+/// ```dart
+/// AnimationController _controller;
+///
+/// @override
+/// void initState() {
+///   super.initState();
+///   _controller = AnimationController(
+///     duration: const Duration(seconds: 2),
+///     vsync: this,
+///   )..repeat(reverse: true);
+/// }
+///
+/// @override
+/// void dispose() {
+///   _controller.dispose();
+///   super.dispose();
+/// }
+///
+/// @override
+/// Widget build(BuildContext context) {
+///   final double smallLogo = 100;
+///   final double bigLogo = 200;
+///
+///   return LayoutBuilder(
+///     builder: (context, constraints) {
+///       final Size biggest = constraints.biggest;
+///       return Stack(
+///         children: [
+///           PositionedTransition(
+///             rect: RelativeRectTween(
+///               begin: RelativeRect.fromSize(Rect.fromLTWH(0, 0, smallLogo, smallLogo), biggest),
+///               end: RelativeRect.fromSize(Rect.fromLTWH(biggest.width - bigLogo, biggest.height - bigLogo, bigLogo, bigLogo), biggest),
+///             ).animate(CurvedAnimation(
+///               parent: _controller,
+///               curve: Curves.elasticInOut,
+///             )),
+///             child: Padding(
+///               padding: const EdgeInsets.all(8),
+///               child: FlutterLogo()
+///             ),
+///           ),
+///         ],
+///       );
+///     },
+///   );
+/// }
+/// ```
+/// {@end-tool}
+///
 /// See also:
 ///
 ///  * [AnimatedPositioned], which transitions a child's position without
@@ -842,6 +899,74 @@ class RelativePositionedTransition extends AnimatedWidget {
 /// [decoration] animated by a [CurvedAnimation] set to [Curves.decelerate]:
 /// {@animation 300 378 https://flutter.github.io/assets-for-api-docs/assets/widgets/decorated_box_transition.mp4}
 ///
+/// {@tool dartpad --template=stateful_widget_material_ticker}
+/// The following code implements the [DecoratedBoxTransition] as seen in the video
+/// above:
+///
+/// ```dart
+/// final DecorationTween decorationTween = DecorationTween(
+///   begin: BoxDecoration(
+///     color: const Color(0xFFFFFFFF),
+///     border: Border.all(style: BorderStyle.none),
+///     borderRadius: BorderRadius.circular(60.0),
+///     shape: BoxShape.rectangle,
+///     boxShadow: const <BoxShadow>[
+///       BoxShadow(
+///         color: Color(0x66666666),
+///         blurRadius: 10.0,
+///         spreadRadius: 3.0,
+///         offset: Offset(0, 6.0),
+///       )
+///     ],
+///   ),
+///   end: BoxDecoration(
+///     color: const Color(0xFFFFFFFF),
+///     border: Border.all(
+///       style: BorderStyle.none,
+///     ),
+///     borderRadius: BorderRadius.zero,
+///     // No shadow.
+///   ),
+/// );
+///
+/// AnimationController _controller;
+///
+/// @override
+/// void initState() {
+///   _controller = AnimationController(
+///     vsync: this,
+///     duration: const Duration(seconds: 3),
+///   )..repeat(reverse: true);
+///   super.initState();
+/// }
+///
+/// @override
+/// void dispose() {
+///   _controller.dispose();
+///   super.dispose();
+/// }
+///
+///  @override
+///  Widget build(BuildContext context) {
+///    return Container(
+///      color: Colors.white,
+///      child: Center(
+///        child: DecoratedBoxTransition(
+///          position: DecorationPosition.background,
+///          decoration: decorationTween.animate(_controller),
+///          child: Container(
+///            width: 200,
+///            height: 200,
+///            padding: const EdgeInsets.all(10),
+///            child: const FlutterLogo(),
+///          ),
+///        ),
+///      ),
+///    );
+///  }
+/// ```
+/// {@end-tool}
+///
 /// See also:
 ///
 ///  * [DecoratedBox], which also draws a [Decoration] but is not animated.
@@ -892,7 +1017,9 @@ class DecoratedBoxTransition extends AnimatedWidget {
 /// Animated version of an [Align] that animates its [Align.alignment] property.
 ///
 /// Here's an illustration of the [DecoratedBoxTransition] widget, with it's
-/// [decoration] animated by a [CurvedAnimation] set to [Curves.decelerate]:
+/// [DecoratedBoxTransition.decoration] animated by a [CurvedAnimation] set to
+/// [Curves.decelerate]:
+///
 /// {@animation 300 378 https://flutter.github.io/assets-for-api-docs/assets/widgets/align_transition.mp4}
 ///
 /// See also:
@@ -1035,62 +1162,56 @@ class DefaultTextStyleTransition extends AnimatedWidget {
 /// Using this pre-built child is entirely optional, but can improve
 /// performance significantly in some cases and is therefore a good practice.
 ///
-/// {@tool snippet}
+/// {@tool dartpad --template=stateful_widget_material_ticker}
 ///
-/// This code defines a widget called `Spinner` that spins a green square
-/// continually. It is built with an [AnimatedBuilder] and makes use of the
-/// [child] feature to avoid having to rebuild the [Container] each time. The
-/// resulting animation is shown below the code.
+/// This code defines a widget that spins a green square continually. It is
+/// built with an [AnimatedBuilder] and makes use of the [child] feature to
+/// avoid having to rebuild the [Container] each time.
+///
+/// ```dart imports
+/// import 'dart:math' as math;
+/// ```
 ///
 /// ```dart
-/// class Spinner extends StatefulWidget {
-///   @override
-///   _SpinnerState createState() => _SpinnerState();
+/// AnimationController _controller;
+///
+/// @override
+/// void initState() {
+///   super.initState();
+///   _controller = AnimationController(
+///     duration: const Duration(seconds: 10),
+///     vsync: this,
+///   )..repeat();
 /// }
 ///
-/// class _SpinnerState extends State<Spinner> with SingleTickerProviderStateMixin {
-///   AnimationController _controller;
+/// @override
+/// void dispose() {
+///   _controller.dispose();
+///   super.dispose();
+/// }
 ///
-///   @override
-///   void initState() {
-///     super.initState();
-///     _controller = AnimationController(
-///       duration: const Duration(seconds: 10),
-///       vsync: this,
-///     )..repeat();
-///   }
-///
-///   @override
-///   void dispose() {
-///     _controller.dispose();
-///     super.dispose();
-///   }
-///
-///   @override
-///   Widget build(BuildContext context) {
-///     return AnimatedBuilder(
-///       animation: _controller,
-///       child: Container(
-///         width: 200.0,
-///         height: 200.0,
-///         color: Colors.green,
-///         child: const Center(
-///           child: Text('Wee'),
-///         ),
+/// @override
+/// Widget build(BuildContext context) {
+///   return AnimatedBuilder(
+///     animation: _controller,
+///     child: Container(
+///       width: 200.0,
+///       height: 200.0,
+///       color: Colors.green,
+///       child: const Center(
+///         child: Text('Whee!'),
 ///       ),
-///       builder: (BuildContext context, Widget child) {
-///         return Transform.rotate(
-///           angle: _controller.value * 2.0 * math.pi,
-///           child: child,
-///         );
-///       },
-///     );
-///   }
+///     ),
+///     builder: (BuildContext context, Widget child) {
+///       return Transform.rotate(
+///         angle: _controller.value * 2.0 * math.pi,
+///         child: child,
+///       );
+///     },
+///   );
 /// }
 /// ```
 /// {@end-tool}
-///
-/// {@animation 300 300 https://flutter.github.io/assets-for-api-docs/assets/widgets/animated_builder.mp4}
 ///
 /// See also:
 ///

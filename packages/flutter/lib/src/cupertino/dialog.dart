@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
@@ -431,7 +433,7 @@ class _CupertinoDialogRenderElement extends RenderObjectElement {
   }
 
   @override
-  void insertChildRenderObject(RenderObject child, _AlertDialogSections slot) {
+  void insertRenderObjectChild(RenderObject child, _AlertDialogSections slot) {
     assert(slot != null);
     switch (slot) {
       case _AlertDialogSections.contentSection:
@@ -444,7 +446,7 @@ class _CupertinoDialogRenderElement extends RenderObjectElement {
   }
 
   @override
-  void moveChildRenderObject(RenderObject child, _AlertDialogSections slot) {
+  void moveRenderObjectChild(RenderObject child, _AlertDialogSections oldSlot, _AlertDialogSections newSlot) {
     assert(false);
   }
 
@@ -468,7 +470,7 @@ class _CupertinoDialogRenderElement extends RenderObjectElement {
   }
 
   @override
-  void removeChildRenderObject(RenderObject child) {
+  void removeRenderObjectChild(RenderObject child, _AlertDialogSections slot) {
     assert(child == renderObject.contentSection || child == renderObject.actionsSection);
     if (renderObject.contentSection == child) {
       renderObject.contentSection = null;
@@ -867,7 +869,7 @@ class _CupertinoAlertContentSection extends StatelessWidget {
     if (title == null && content == null) {
       return SingleChildScrollView(
         controller: scrollController,
-        child: Container(width: 0.0, height: 0.0),
+        child: const SizedBox(width: 0.0, height: 0.0),
       );
     }
 
@@ -995,7 +997,8 @@ class _PressableActionButtonState extends State<_PressableActionButton> {
     return _ActionButtonParentDataWidget(
       isPressed: _isPressed,
       child: MergeSemantics(
-        // TODO(mattcarroll): Button press dynamics need overhaul for iOS: https://github.com/flutter/flutter/issues/19786
+        // TODO(mattcarroll): Button press dynamics need overhaul for iOS:
+        // https://github.com/flutter/flutter/issues/19786
         child: GestureDetector(
           excludeFromSemantics: true,
           behavior: HitTestBehavior.opaque,
@@ -1005,7 +1008,8 @@ class _PressableActionButtonState extends State<_PressableActionButton> {
           onTapUp: (TapUpDetails details) => setState(() {
             _isPressed = false;
           }),
-          // TODO(mattcarroll): Cancel is currently triggered when user moves past slop instead of off button: https://github.com/flutter/flutter/issues/19783
+          // TODO(mattcarroll): Cancel is currently triggered when user moves
+          //  past slop instead of off button: https://github.com/flutter/flutter/issues/19783
           onTapCancel: () => setState(() => _isPressed = false),
           child: widget.child,
         ),
@@ -1540,6 +1544,7 @@ class _RenderCupertinoDialogActions extends RenderBox
 
   @override
   void performLayout() {
+    final BoxConstraints constraints = this.constraints;
     if (_isSingleButtonRow(dialogWidth)) {
       if (childCount == 1) {
         // We have 1 button. Our size is the width of the dialog and the height

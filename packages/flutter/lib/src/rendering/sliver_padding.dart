@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -118,6 +120,7 @@ abstract class RenderSliverEdgeInsetsPadding extends RenderSliver with RenderObj
 
   @override
   void performLayout() {
+    final SliverConstraints constraints = this.constraints;
     assert(resolvedPadding != null);
     final double beforePadding = this.beforePadding;
     final double afterPadding = this.afterPadding;

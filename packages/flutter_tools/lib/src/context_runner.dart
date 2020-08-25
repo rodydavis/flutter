@@ -11,17 +11,15 @@ import 'android/gradle_utils.dart';
 import 'application_package.dart';
 import 'artifacts.dart';
 import 'asset.dart';
-import 'base/build.dart';
 import 'base/config.dart';
 import 'base/context.dart';
 import 'base/io.dart';
 import 'base/logger.dart';
 import 'base/os.dart';
 import 'base/process.dart';
-import 'base/signals.dart';
-import 'base/terminal.dart';
 import 'base/time.dart';
 import 'base/user_messages.dart';
+import 'build_info.dart';
 import 'build_system/build_system.dart';
 import 'cache.dart';
 import 'compile.dart';
@@ -33,25 +31,21 @@ import 'emulator.dart';
 import 'features.dart';
 import 'fuchsia/fuchsia_device.dart' show FuchsiaDeviceTools;
 import 'fuchsia/fuchsia_sdk.dart' show FuchsiaSdk, FuchsiaArtifacts;
-import 'fuchsia/fuchsia_workflow.dart' show FuchsiaWorkflow;
+import 'fuchsia/fuchsia_workflow.dart' show FuchsiaWorkflow, fuchsiaWorkflow;
 import 'globals.dart' as globals;
-import 'ios/devices.dart' show IOSDeploy;
 import 'ios/ios_workflow.dart';
-import 'ios/mac.dart';
+import 'ios/iproxy.dart';
 import 'ios/simulators.dart';
 import 'ios/xcodeproj.dart';
-import 'linux/linux_workflow.dart';
 import 'macos/cocoapods.dart';
 import 'macos/cocoapods_validator.dart';
 import 'macos/macos_workflow.dart';
 import 'macos/xcode.dart';
-import 'macos/xcode_validator.dart';
 import 'mdns_discovery.dart';
 import 'persistent_tool_state.dart';
 import 'reporting/reporting.dart';
 import 'run_hot.dart';
 import 'version.dart';
-import 'web/chrome.dart';
 import 'web/workflow.dart';
 import 'windows/visual_studio.dart';
 import 'windows/visual_studio_validator.dart';
@@ -87,7 +81,10 @@ Future<T> runInContext<T>(
         processManager: globals.processManager,
         userMessages: globals.userMessages,
       ),
-      AndroidWorkflow: () => AndroidWorkflow(),
+      AndroidWorkflow: () => AndroidWorkflow(
+        androidSdk: globals.androidSdk,
+        featureFlags: featureFlags,
+      ),
       ApplicationPackageFactory: () => ApplicationPackageFactory(),
       Artifacts: () => CachedArtifacts(
         fileSystem: globals.fs,
@@ -95,55 +92,115 @@ Future<T> runInContext<T>(
         platform: globals.platform,
       ),
       AssetBundleFactory: () => AssetBundleFactory.defaultInstance,
-      BuildSystem: () => const BuildSystem(),
+      BuildSystem: () => FlutterBuildSystem(
+        fileSystem: globals.fs,
+        logger: globals.logger,
+        platform: globals.platform,
+      ),
       Cache: () => Cache(
         fileSystem: globals.fs,
         logger: globals.logger,
         platform: globals.platform,
       ),
-      ChromeLauncher: () => const ChromeLauncher(),
-      CocoaPods: () => CocoaPods(),
-      CocoaPodsValidator: () => const CocoaPodsValidator(),
+      CocoaPods: () => CocoaPods(
+        fileSystem: globals.fs,
+        processManager: globals.processManager,
+        logger: globals.logger,
+        platform: globals.platform,
+        xcodeProjectInterpreter: globals.xcodeProjectInterpreter,
+        timeoutConfiguration: timeoutConfiguration,
+      ),
+      CocoaPodsValidator: () => CocoaPodsValidator(
+        globals.cocoaPods,
+        globals.userMessages,
+      ),
       Config: () => Config(
         Config.kFlutterSettings,
         fileSystem: globals.fs,
         logger: globals.logger,
         platform: globals.platform,
       ),
+      CrashReporter: () => CrashReporter(
+        fileSystem: globals.fs,
+        logger: globals.logger,
+        flutterProjectFactory: globals.projectFactory,
+        client: globals.httpClientFactory?.call() ?? HttpClient(),
+      ),
       DevFSConfig: () => DevFSConfig(),
-      DeviceManager: () => DeviceManager(),
-      Doctor: () => const Doctor(),
+      DeviceManager: () => FlutterDeviceManager(
+        logger: globals.logger,
+        processManager: globals.processManager,
+        platform: globals.platform,
+        androidSdk: globals.androidSdk,
+        iosSimulatorUtils: globals.iosSimulatorUtils,
+        featureFlags: featureFlags,
+        fileSystem: globals.fs,
+        iosWorkflow: globals.iosWorkflow,
+        artifacts: globals.artifacts,
+        flutterVersion: globals.flutterVersion,
+        androidWorkflow: androidWorkflow,
+        config: globals.config,
+        fuchsiaWorkflow: fuchsiaWorkflow,
+        xcDevice: globals.xcdevice,
+        macOSWorkflow: MacOSWorkflow(
+          platform: globals.platform,
+          featureFlags: featureFlags,
+        ),
+      ),
+      Doctor: () => Doctor(logger: globals.logger),
       DoctorValidatorsProvider: () => DoctorValidatorsProvider.defaultInstance,
-      EmulatorManager: () => EmulatorManager(),
-      FeatureFlags: () => const FeatureFlags(),
+      EmulatorManager: () => EmulatorManager(
+        androidSdk: globals.androidSdk,
+        processManager: globals.processManager,
+        logger: globals.logger,
+        fileSystem: globals.fs,
+        androidWorkflow: androidWorkflow,
+      ),
+      FeatureFlags: () => const FlutterFeatureFlags(),
       FlutterVersion: () => FlutterVersion(const SystemClock()),
       FuchsiaArtifacts: () => FuchsiaArtifacts.find(),
       FuchsiaDeviceTools: () => FuchsiaDeviceTools(),
       FuchsiaSdk: () => FuchsiaSdk(),
-      FuchsiaWorkflow: () => FuchsiaWorkflow(),
-      GenSnapshot: () => const GenSnapshot(),
+      FuchsiaWorkflow: () => FuchsiaWorkflow(
+        featureFlags: featureFlags,
+        platform: globals.platform,
+        fuchsiaArtifacts: globals.fuchsiaArtifacts,
+      ),
       GradleUtils: () => GradleUtils(),
       HotRunnerConfig: () => HotRunnerConfig(),
-      IMobileDevice: () => IMobileDevice(),
-      IOSDeploy: () => const IOSDeploy(),
-      IOSSimulatorUtils: () => IOSSimulatorUtils(),
-      IOSWorkflow: () => const IOSWorkflow(),
-      KernelCompilerFactory: () => const KernelCompilerFactory(),
-      LinuxWorkflow: () => const LinuxWorkflow(),
+      IOSSimulatorUtils: () => IOSSimulatorUtils(
+        logger: globals.logger,
+        processManager: globals.processManager,
+        xcode: globals.xcode,
+      ),
+      IOSWorkflow: () => IOSWorkflow(
+        featureFlags: featureFlags,
+        xcode: globals.xcode,
+        platform: globals.platform,
+      ),
+      KernelCompilerFactory: () => KernelCompilerFactory(
+        logger: globals.logger,
+        processManager: globals.processManager,
+        artifacts: globals.artifacts,
+        fileSystem: globals.fs,
+      ),
       Logger: () => globals.platform.isWindows
         ? WindowsStdoutLogger(
             terminal: globals.terminal,
             stdio: globals.stdio,
-            outputPreferences: outputPreferences,
+            outputPreferences: globals.outputPreferences,
             timeoutConfiguration: timeoutConfiguration,
           )
         : StdoutLogger(
             terminal: globals.terminal,
             stdio: globals.stdio,
-            outputPreferences: outputPreferences,
+            outputPreferences: globals.outputPreferences,
             timeoutConfiguration: timeoutConfiguration,
           ),
-      MacOSWorkflow: () => const MacOSWorkflow(),
+      MacOSWorkflow: () => MacOSWorkflow(
+        featureFlags: featureFlags,
+        platform: globals.platform,
+      ),
       MDnsObservatoryDiscovery: () => MDnsObservatoryDiscovery(),
       OperatingSystemUtils: () => OperatingSystemUtils(
         fileSystem: globals.fs,
@@ -161,32 +218,60 @@ Future<T> runInContext<T>(
         processManager: globals.processManager,
         logger: globals.logger,
       ),
-      Pub: () => const Pub(),
+      Pub: () => Pub(
+        fileSystem: globals.fs,
+        logger: globals.logger,
+        processManager: globals.processManager,
+        botDetector: globals.botDetector,
+        platform: globals.platform,
+        usage: globals.flutterUsage,
+        toolStampFile: globals.cache.getStampFileFor('flutter_tools'),
+      ),
       ShutdownHooks: () => ShutdownHooks(logger: globals.logger),
-      Signals: () => Signals(),
-      SimControl: () => SimControl(),
-      Stdio: () => const Stdio(),
+      Stdio: () => Stdio(),
       SystemClock: () => const SystemClock(),
       TimeoutConfiguration: () => const TimeoutConfiguration(),
       Usage: () => Usage(
         runningOnBot: runningOnBot,
       ),
       UserMessages: () => UserMessages(),
-      VisualStudio: () => VisualStudio(),
-      VisualStudioValidator: () => const VisualStudioValidator(),
-      WebWorkflow: () => const WebWorkflow(),
+      VisualStudioValidator: () => VisualStudioValidator(
+        userMessages: globals.userMessages,
+        visualStudio: VisualStudio(
+          fileSystem: globals.fs,
+          platform: globals.platform,
+          logger: globals.logger,
+          processManager: globals.processManager,
+        )
+      ),
+      WebWorkflow: () => WebWorkflow(
+        featureFlags: featureFlags,
+        platform: globals.platform,
+      ),
       WindowsWorkflow: () => const WindowsWorkflow(),
       Xcode: () => Xcode(
         logger: globals.logger,
         processManager: globals.processManager,
         platform: globals.platform,
         fileSystem: globals.fs,
-        xcodeProjectInterpreter: xcodeProjectInterpreter,
+        xcodeProjectInterpreter: globals.xcodeProjectInterpreter,
       ),
       XCDevice: () => XCDevice(
         processManager: globals.processManager,
         logger: globals.logger,
+        artifacts: globals.artifacts,
+        cache: globals.cache,
+        platform: globals.platform,
         xcode: globals.xcode,
+        iproxy: IProxy(
+          iproxyPath: globals.artifacts.getArtifactPath(
+            Artifact.iproxy,
+            platform: TargetPlatform.ios,
+          ),
+          logger: globals.logger,
+          processManager: globals.processManager,
+          dyLdLibEntry: globals.cache.dyLdLibEntry,
+        ),
       ),
       XcodeProjectInterpreter: () => XcodeProjectInterpreter(
         logger: globals.logger,
@@ -194,8 +279,8 @@ Future<T> runInContext<T>(
         platform: globals.platform,
         fileSystem: globals.fs,
         terminal: globals.terminal,
+        usage: globals.flutterUsage,
       ),
-      XcodeValidator: () => const XcodeValidator(),
     },
   );
 }

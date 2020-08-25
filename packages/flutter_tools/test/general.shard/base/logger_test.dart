@@ -5,17 +5,19 @@
 import 'dart:async';
 import 'dart:convert' show jsonEncode;
 
-import 'package:platform/platform.dart';
+import 'package:flutter_tools/executable.dart';
 import 'package:flutter_tools/src/base/io.dart';
 import 'package:flutter_tools/src/base/logger.dart';
+import 'package:flutter_tools/src/base/platform.dart';
 import 'package:flutter_tools/src/base/terminal.dart';
+import 'package:flutter_tools/src/commands/daemon.dart';
 import 'package:mockito/mockito.dart';
-import 'package:quiver/testing/async.dart';
+import 'package:fake_async/fake_async.dart';
 
 import '../../src/common.dart';
 import '../../src/mocks.dart' as mocks;
 
-final Platform _kNoAnsiPlatform = FakePlatform.fromPlatform(const LocalPlatform())..stdoutSupportsAnsi = false;
+final Platform _kNoAnsiPlatform = FakePlatform(stdoutSupportsAnsi: false);
 final String red = RegExp.escape(AnsiTerminal.red);
 final String bold = RegExp.escape(AnsiTerminal.bold);
 final String resetBold = RegExp.escape(AnsiTerminal.resetBold);
@@ -23,17 +25,53 @@ final String resetColor = RegExp.escape(AnsiTerminal.resetColor);
 
 class MockStdout extends Mock implements Stdout {}
 
-class ThrowingStdio extends Stdio {
-  ThrowingStdio(this.stdout, this.stderr);
-
-  @override
-  final Stdout stdout;
-
-  @override
-  final IOSink stderr;
-}
-
 void main() {
+  testWithoutContext('correct logger instance is created', () {
+    final LoggerFactory loggerFactory = LoggerFactory(
+      terminal: Terminal.test(),
+      stdio: mocks.MockStdio(),
+      outputPreferences: OutputPreferences.test(),
+      timeoutConfiguration: const TimeoutConfiguration(),
+    );
+
+    expect(loggerFactory.createLogger(
+      verbose: false,
+      machine: false,
+      daemon: false,
+      windows: false,
+    ), isA<StdoutLogger>());
+    expect(loggerFactory.createLogger(
+      verbose: false,
+      machine: false,
+      daemon: false,
+      windows: true,
+    ), isA<WindowsStdoutLogger>());
+    expect(loggerFactory.createLogger(
+      verbose: true,
+      machine: false,
+      daemon: false,
+      windows: true,
+    ), isA<VerboseLogger>());
+    expect(loggerFactory.createLogger(
+      verbose: true,
+      machine: false,
+      daemon: false,
+      windows: false,
+    ), isA<VerboseLogger>());
+    expect(loggerFactory.createLogger(
+      verbose: false,
+      machine: false,
+      daemon: true,
+      windows: false,
+    ), isA<NotifyingLogger>());
+    expect(loggerFactory.createLogger(
+      verbose: false,
+      machine: true,
+      daemon: false,
+      windows: false,
+    ), isA<AppRunLogger>());
+  });
+
   group('AppContext', () {
     FakeStopwatch fakeStopWatch;
 
@@ -42,11 +80,7 @@ void main() {
     });
 
     testWithoutContext('error', () async {
-      final BufferLogger mockLogger = BufferLogger(
-        terminal: AnsiTerminal(
-          stdio: mocks.MockStdio(),
-          platform: _kNoAnsiPlatform,
-        ),
+      final BufferLogger mockLogger = BufferLogger.test(
         outputPreferences: OutputPreferences.test(showColor: false),
       );
       final VerboseLogger verboseLogger = VerboseLogger(
@@ -68,7 +102,7 @@ void main() {
       final BufferLogger mockLogger = BufferLogger(
         terminal: AnsiTerminal(
           stdio:  mocks.MockStdio(),
-          platform: FakePlatform()..stdoutSupportsAnsi = true,
+          platform: FakePlatform(stdoutSupportsAnsi: true),
         ),
         outputPreferences: OutputPreferences.test(showColor: true),
       );
@@ -94,9 +128,11 @@ void main() {
   testWithoutContext('Logger does not throw when stdio write throws synchronously', () async {
     final MockStdout stdout = MockStdout();
     final MockStdout stderr = MockStdout();
-    final ThrowingStdio stdio = ThrowingStdio(stdout, stderr);
+    final Stdio stdio = Stdio.test(stdout: stdout, stderr: stderr);
     bool stdoutThrew = false;
     bool stderrThrew = false;
+    final Completer<void> stdoutError = Completer<void>();
+    final Completer<void> stderrError = Completer<void>();
     when(stdout.write(any)).thenAnswer((_) {
       stdoutThrew = true;
       throw 'Error';
@@ -105,6 +141,8 @@ void main() {
       stderrThrew = true;
       throw 'Error';
     });
+    when(stdout.done).thenAnswer((_) => stdoutError.future);
+    when(stderr.done).thenAnswer((_) => stderrError.future);
     final Logger logger = StdoutLogger(
       terminal: AnsiTerminal(
         stdio: stdio,
@@ -123,7 +161,9 @@ void main() {
   testWithoutContext('Logger does not throw when stdio write throws asynchronously', () async {
     final MockStdout stdout = MockStdout();
     final MockStdout stderr = MockStdout();
-    final ThrowingStdio stdio = ThrowingStdio(stdout, stderr);
+    final Stdio stdio = Stdio.test(stdout: stdout, stderr: stderr);
+    final Completer<void> stdoutError = Completer<void>();
+    final Completer<void> stderrError = Completer<void>();
     bool stdoutThrew = false;
     bool stderrThrew = false;
     final Completer<void> stdoutCompleter = Completer<void>();
@@ -142,6 +182,8 @@ void main() {
         throw 'Error';
       }, null);
     });
+    when(stdout.done).thenAnswer((_) => stdoutError.future);
+    when(stderr.done).thenAnswer((_) => stderrError.future);
     final Logger logger = StdoutLogger(
       terminal: AnsiTerminal(
         stdio: stdio,
@@ -157,6 +199,43 @@ void main() {
     await stderrCompleter.future;
     expect(stdoutThrew, true);
     expect(stderrThrew, true);
+  });
+
+  testWithoutContext('Logger does not throw when stdio completes done with an error', () async {
+    final MockStdout stdout = MockStdout();
+    final MockStdout stderr = MockStdout();
+    final Stdio stdio = Stdio.test(stdout: stdout, stderr: stderr);
+    final Completer<void> stdoutError = Completer<void>();
+    final Completer<void> stderrError = Completer<void>();
+    final Completer<void> stdoutCompleter = Completer<void>();
+    final Completer<void> stderrCompleter = Completer<void>();
+    when(stdout.write(any)).thenAnswer((_) {
+      Zone.current.runUnaryGuarded<void>((_) {
+        stdoutError.completeError(Exception('Some pipe error'));
+        stdoutCompleter.complete();
+      }, null);
+    });
+    when(stderr.write(any)).thenAnswer((_) {
+      Zone.current.runUnaryGuarded<void>((_) {
+        stderrError.completeError(Exception('Some pipe error'));
+        stderrCompleter.complete();
+      }, null);
+    });
+    when(stdout.done).thenAnswer((_) => stdoutError.future);
+    when(stderr.done).thenAnswer((_) => stderrError.future);
+    final Logger logger = StdoutLogger(
+      terminal: AnsiTerminal(
+        stdio: stdio,
+        platform: _kNoAnsiPlatform,
+      ),
+      stdio: stdio,
+      outputPreferences: OutputPreferences.test(),
+      timeoutConfiguration: const TimeoutConfiguration(),
+    );
+    logger.printStatus('message');
+    logger.printError('error message');
+    await stdoutCompleter.future;
+    await stderrCompleter.future;
   });
 
   group('Spinners', () {
@@ -219,8 +298,8 @@ void main() {
         AnsiStatus ansiStatus;
 
         setUp(() {
-          platform = FakePlatform.fromPlatform(testPlatform)..stdoutSupportsAnsi = false;
-          ansiPlatform = FakePlatform.fromPlatform(testPlatform)..stdoutSupportsAnsi = true;
+          platform = FakePlatform(stdoutSupportsAnsi: false);
+          ansiPlatform = FakePlatform(stdoutSupportsAnsi: true);
 
           terminal = AnsiTerminal(
             stdio: mockStdio,
@@ -451,8 +530,8 @@ void main() {
             expect(lines[1], equals(''));
 
             // Verify that stopping or canceling multiple times throws.
-            expect(() { ansiStatus.cancel(); }, throwsAssertionError);
-            expect(() { ansiStatus.stop(); }, throwsAssertionError);
+            expect(ansiStatus.cancel, throwsAssertionError);
+            expect(ansiStatus.stop, throwsAssertionError);
             done = true;
           });
           expect(done, isTrue);
@@ -718,7 +797,7 @@ void main() {
       final Logger logger = StdoutLogger(
         terminal: AnsiTerminal(
           stdio: mockStdio,
-          platform: FakePlatform()..stdoutSupportsAnsi = true,
+          platform: FakePlatform(stdoutSupportsAnsi: true),
         ),
         stdio: mockStdio,
         outputPreferences: OutputPreferences.test(showColor: true),
@@ -890,8 +969,8 @@ void main() {
         outputPreferences: OutputPreferences.test(showColor: false),
         timeoutConfiguration: const TimeoutConfiguration(),
       );
-      logger.startProgress('AAA', timeout: const TimeoutConfiguration().fastOperation)..stop();
-      logger.startProgress('BBB', timeout: const TimeoutConfiguration().fastOperation)..stop();
+      logger.startProgress('AAA', timeout: const TimeoutConfiguration().fastOperation).stop();
+      logger.startProgress('BBB', timeout: const TimeoutConfiguration().fastOperation).stop();
       final List<String> output = outputStdout();
 
       expect(output.length, equals(3));
@@ -916,8 +995,8 @@ void main() {
         ),
         stopwatchFactory: FakeStopwatchFactory(),
       );
-      logger.startProgress('AAA', timeout: const TimeoutConfiguration().fastOperation)..stop();
-      logger.startProgress('BBB', timeout: const TimeoutConfiguration().fastOperation)..stop();
+      logger.startProgress('AAA', timeout: const TimeoutConfiguration().fastOperation).stop();
+      logger.startProgress('BBB', timeout: const TimeoutConfiguration().fastOperation).stop();
 
       expect(outputStdout(), <Matcher>[
         matches(r'^\[ (?: {0,2}\+[0-9]{1,4} ms|       )\] AAA$'),
@@ -936,8 +1015,8 @@ void main() {
         ),
         outputPreferences: OutputPreferences.test(),
       );
-      logger.startProgress('AAA', timeout: const TimeoutConfiguration().fastOperation)..stop();
-      logger.startProgress('BBB', timeout: const TimeoutConfiguration().fastOperation)..stop();
+      logger.startProgress('AAA', timeout: const TimeoutConfiguration().fastOperation).stop();
+      logger.startProgress('BBB', timeout: const TimeoutConfiguration().fastOperation).stop();
 
       expect(logger.statusText, 'AAA\nBBB\n');
     });

@@ -6,7 +6,7 @@ import 'package:args/command_runner.dart';
 import 'package:file/memory.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/build_system/build_system.dart';
-import 'package:flutter_tools/src/build_system/targets/dart.dart';
+import 'package:flutter_tools/src/build_system/targets/common.dart';
 import 'package:flutter_tools/src/build_system/targets/icon_tree_shaker.dart';
 import 'package:flutter_tools/src/bundle.dart';
 import 'package:flutter_tools/src/cache.dart';
@@ -33,7 +33,7 @@ void main() {
     when(
       mockBundleBuilder.build(
         platform: anyNamed('platform'),
-        buildMode: anyNamed('buildMode'),
+        buildInfo: anyNamed('buildInfo'),
         mainPath: anyNamed('mainPath'),
         manifestPath: anyNamed('manifestPath'),
         applicationKernelFilePath: anyNamed('applicationKernelFilePath'),
@@ -212,7 +212,7 @@ void main() {
     globals.fs.file('pubspec.yaml').createSync();
     globals.fs.file('.packages').createSync();
     final CommandRunner<void> runner = createTestCommandRunner(BuildBundleCommand());
-    when(buildSystem.build(any, any)).thenAnswer((Invocation invocation) async {
+    when(globals.buildSystem.build(any, any)).thenAnswer((Invocation invocation) async {
       final Environment environment = invocation.positionalArguments[1] as Environment;
       expect(environment.defines, <String, String>{
         kTargetFile: globals.fs.path.join('lib', 'main.dart'),

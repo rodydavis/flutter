@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart';
@@ -24,7 +26,8 @@ import 'theme.dart';
 ///    its subtree.
 ///  * [ButtonBar], which uses this to configure itself and its children
 ///    button widgets.
-class ButtonBarThemeData extends Diagnosticable {
+@immutable
+class ButtonBarThemeData with Diagnosticable {
   /// Constructs the set of properties used to configure [ButtonBar] widgets.
   ///
   /// Both [buttonMinWidth] and [buttonHeight] must be non-negative if they
@@ -51,7 +54,7 @@ class ButtonBarThemeData extends Diagnosticable {
   /// Defines a [ButtonBar] button's base colors, and the defaults for
   /// the button's minimum size, internal padding, and shape.
   ///
-  /// This will override the surrounding [ButtonTheme.textTheme] setting
+  /// This will override the surrounding [ButtonThemeData.textTheme] setting
   /// for buttons contained in the [ButtonBar].
   ///
   /// Despite the name, this property is not a [TextTheme], its value is not a
@@ -60,22 +63,22 @@ class ButtonBarThemeData extends Diagnosticable {
 
   /// The minimum width for [ButtonBar] buttons.
   ///
-  /// This will override the surrounding [ButtonTheme.minWidth] setting
+  /// This will override the surrounding [ButtonThemeData.minWidth] setting
   /// for buttons contained in the [ButtonBar].
   ///
   /// The actual horizontal space allocated for a button's child is
-  /// at least this value less the theme's horizontal [padding].
+  /// at least this value less the theme's horizontal [ButtonThemeData.padding].
   final double buttonMinWidth;
 
   /// The minimum height for [ButtonBar] buttons.
   ///
-  /// This will override the surrounding [ButtonTheme.height] setting
+  /// This will override the surrounding [ButtonThemeData.height] setting
   /// for buttons contained in the [ButtonBar].
   final double buttonHeight;
 
   /// Padding for a [ButtonBar] button's child (typically the button's label).
   ///
-  /// This will override the surrounding [ButtonTheme.padding] setting
+  /// This will override the surrounding [ButtonThemeData.padding] setting
   /// for buttons contained in the [ButtonBar].
   final EdgeInsetsGeometry buttonPadding;
 
@@ -87,7 +90,7 @@ class ButtonBarThemeData extends Diagnosticable {
   /// edge of the menu's value with the leading edge of the values
   /// displayed by the menu items.
   ///
-  /// This will override the surrounding [ButtonTheme.alignedDropdown] setting
+  /// This will override the surrounding [ButtonThemeData.alignedDropdown] setting
   /// for buttons contained in the [ButtonBar].
   ///
   /// This property only affects [DropdownButton] contained in a [ButtonBar]

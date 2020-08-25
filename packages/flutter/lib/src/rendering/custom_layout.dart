@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter/foundation.dart';
 
 import 'box.dart';
@@ -122,8 +124,9 @@ abstract class MultiChildLayoutDelegate {
 
   final Listenable _relayout;
 
-  Map<Object, RenderBox> _idToChild;
-  Set<RenderBox> _debugChildrenNeedingLayout;
+  // TODO(ianh): make these late final
+  /*late*/ Map<Object/*!*/, RenderBox>/*!*/ _idToChild;
+  /*late*/ Set<RenderBox/*!*/>/*!*/ _debugChildrenNeedingLayout;
 
   /// True if a non-null LayoutChild was provided for the specified id.
   ///
@@ -138,20 +141,20 @@ abstract class MultiChildLayoutDelegate {
   /// Call this from your [performLayout] function to lay out each
   /// child. Every child must be laid out using this function exactly
   /// once each time the [performLayout] function is called.
-  Size layoutChild(Object childId, BoxConstraints constraints) {
+  Size/*!*/ layoutChild(Object childId, BoxConstraints constraints) {
     final RenderBox child = _idToChild[childId];
     assert(() {
       if (child == null) {
-        throw FlutterError.fromParts(<DiagnosticsNode>[
-          ErrorSummary('The $this custom multichild layout delegate tried to lay out a non-existent child.'),
-          ErrorDescription('There is no child with the id "$childId".')
-        ]);
+        throw FlutterError(
+          'The $this custom multichild layout delegate tried to lay out a non-existent child.\n'
+          'There is no child with the id "$childId".'
+        );
       }
       if (!_debugChildrenNeedingLayout.remove(child)) {
-        throw FlutterError.fromParts(<DiagnosticsNode>[
-          ErrorSummary('The $this custom multichild layout delegate tried to lay out the child with id "$childId" more than once.'),
-          ErrorDescription('Each child must be laid out exactly once.')
-        ]);
+        throw FlutterError(
+          'The $this custom multichild layout delegate tried to lay out the child with id "$childId" more than once.\n'
+          'Each child must be laid out exactly once.'
+        );
       }
       try {
         assert(constraints.debugAssertIsValid(isAppliedConstraint: true));
@@ -182,15 +185,15 @@ abstract class MultiChildLayoutDelegate {
     final RenderBox child = _idToChild[childId];
     assert(() {
       if (child == null) {
-        throw FlutterError.fromParts(<DiagnosticsNode>[
-          ErrorSummary('The $this custom multichild layout delegate tried to position out a non-existent child:'),
-          ErrorDescription('There is no child with the id "$childId".')
-        ]);
+        throw FlutterError(
+          'The $this custom multichild layout delegate tried to position out a non-existent child:\n'
+          'There is no child with the id "$childId".'
+        );
       }
       if (offset == null) {
-        throw FlutterError.fromParts(<DiagnosticsNode>[
-          ErrorSummary('The $this custom multichild layout delegate provided a null position for the child with id "$childId".')
-        ]);
+        throw FlutterError(
+          'The $this custom multichild layout delegate provided a null position for the child with id "$childId".'
+        );
       }
       return true;
     }());
@@ -209,7 +212,8 @@ abstract class MultiChildLayoutDelegate {
     // we return.
     final Map<Object, RenderBox> previousIdToChild = _idToChild;
 
-    Set<RenderBox> debugPreviousChildrenNeedingLayout;
+    // TODO(ianh): make the next line final
+    /*late*/ Set<RenderBox>/*!*/ debugPreviousChildrenNeedingLayout;
     assert(() {
       debugPreviousChildrenNeedingLayout = _debugChildrenNeedingLayout;
       _debugChildrenNeedingLayout = <RenderBox>{};

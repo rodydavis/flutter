@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
 import 'dart:async';
 import 'dart:convert';
 import 'dart:core';
@@ -34,6 +35,17 @@ const List<int> _kFailPngBytes =
   120, 1, 99, 249, 207, 240, 255, 63, 0, 7, 18, 3, 2, 164, 147, 160, 197, 0,
   0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130];
 
+Future<void> testWithOutput(String name, Future<void> body(), String expectedOutput) async {
+  test(name, () async {
+    final StringBuffer output = StringBuffer();
+    void _recordPrint(Zone self, ZoneDelegate parent, Zone zone, String line) {
+      output.write(line);
+    }
+    await runZoned<Future<void>>(body, zoneSpecification: ZoneSpecification(print: _recordPrint));
+    expect(output.toString(), expectedOutput);
+  });
+}
+
 void main() {
   MemoryFileSystem fs;
   FakePlatform platform;
@@ -64,6 +76,7 @@ void main() {
         process: process,
         platform: platform,
         httpClient: mockHttpClient,
+        ci: ContinuousIntegrationEnvironment.luci,
       );
     });
 
@@ -108,6 +121,7 @@ void main() {
         process: process,
         platform: platform,
         httpClient: mockHttpClient,
+        ci: ContinuousIntegrationEnvironment.cirrus,
       );
 
       when(process.run(any))
@@ -136,6 +150,7 @@ void main() {
         process: process,
         platform: platform,
         httpClient: mockHttpClient,
+        ci: ContinuousIntegrationEnvironment.luci
       );
 
       when(process.run(
@@ -162,6 +177,76 @@ void main() {
       expect(
         test,
         throwsException,
+      );
+    });
+
+    test('correctly inits tryjob for luci', () async {
+      platform = FakePlatform(
+        environment: <String, String>{
+          'FLUTTER_ROOT': _kFlutterRoot,
+          'GOLDCTL' : 'goldctl',
+          'SWARMING_TASK_ID' : '4ae997b50dfd4d11',
+          'LOGDOG_STREAM_PREFIX' : 'buildbucket/cr-buildbucket.appspot.com/8885996262141582672',
+          'GOLD_TRYJOB' : 'refs/pull/49815/head',
+        },
+        operatingSystem: 'macos'
+      );
+
+      skiaClient = SkiaGoldClient(
+        workDirectory,
+        fs: fs,
+        process: process,
+        platform: platform,
+        httpClient: mockHttpClient,
+        ci: ContinuousIntegrationEnvironment.luci,
+      );
+
+      final List<String> ciArguments = skiaClient.getCIArguments();
+
+      expect(
+        ciArguments,
+        equals(
+          <String>[
+            '--changelist', '49815',
+            '--cis', 'buildbucket',
+            '--jobid', '8885996262141582672',
+          ],
+        ),
+      );
+    });
+
+    test('correctly inits tryjob for cirrus', () async {
+      platform = FakePlatform(
+        environment: <String, String>{
+          'FLUTTER_ROOT': _kFlutterRoot,
+          'GOLDCTL' : 'goldctl',
+          'CIRRUS_CI' : 'true',
+          'CIRRUS_TASK_ID' : '8885996262141582672',
+          'CIRRUS_PR' : '49815',
+        },
+        operatingSystem: 'macos'
+      );
+
+      skiaClient = SkiaGoldClient(
+        workDirectory,
+        fs: fs,
+        process: process,
+        platform: platform,
+        httpClient: mockHttpClient,
+        ci: ContinuousIntegrationEnvironment.cirrus,
+      );
+
+      final List<String> ciArguments = skiaClient.getCIArguments();
+
+      expect(
+        ciArguments,
+        equals(
+          <String>[
+            '--changelist', '49815',
+            '--cis', 'cirrus',
+            '--jobid', '8885996262141582672',
+          ],
+        ),
       );
     });
 
@@ -256,6 +341,24 @@ void main() {
         url = Uri.parse('https://flutter-gold.skia.org/json/expectations/commit/HEAD');
         final MockHttpClientResponse mockHttpResponse = MockHttpClientResponse(
           utf8.encode(rawExpectationsTemplate())
+        );
+        when(mockHttpClient.getUrl(url))
+          .thenAnswer((_) => Future<MockHttpClientRequest>.value(mockHttpRequest));
+        when(mockHttpRequest.close())
+          .thenAnswer((_) => Future<MockHttpClientResponse>.value(mockHttpResponse));
+
+        await skiaClient.getExpectations();
+        expect(skiaClient.expectations, isNotNull);
+        expect(
+          skiaClient.expectations['flutter.golden_test.1'],
+          contains(expectation),
+        );
+      });
+
+      test('sets up expectations with temporary key', () async {
+        url = Uri.parse('https://flutter-gold.skia.org/json/expectations/commit/HEAD');
+        final MockHttpClientResponse mockHttpResponse = MockHttpClientResponse(
+          utf8.encode(rawExpectationsTemplateWithTemporaryKey())
         );
         when(mockHttpClient.getUrl(url))
           .thenAnswer((_) => Future<MockHttpClientRequest>.value(mockHttpRequest));
@@ -456,12 +559,12 @@ void main() {
   });
 
   group('FlutterGoldenFileComparator', () {
-    FlutterSkiaGoldFileComparator comparator;
+    FlutterPostSubmitFileComparator comparator;
 
     setUp(() {
       final Directory basedir = fs.directory('flutter/test/library/')
         ..createSync(recursive: true);
-      comparator = FlutterSkiaGoldFileComparator(
+      comparator = FlutterPostSubmitFileComparator(
         basedir.uri,
         MockSkiaGoldClient(),
         fs: fs,
@@ -497,7 +600,7 @@ void main() {
       setUp(() {
         final Directory basedir = fs.directory('flutter/test/library/')
           ..createSync(recursive: true);
-        comparator = FlutterSkiaGoldFileComparator(
+        comparator = FlutterPostSubmitFileComparator(
           basedir.uri,
           mockSkiaClient,
           fs: fs,
@@ -506,7 +609,22 @@ void main() {
       });
 
       group('correctly determines testing environment', () {
-        test('returns true', () {
+        test('returns true for Luci', () {
+          platform = FakePlatform(
+            environment: <String, String>{
+              'FLUTTER_ROOT': _kFlutterRoot,
+              'SWARMING_TASK_ID' : '12345678990',
+              'GOLDCTL' : 'goldctl',
+            },
+            operatingSystem: 'macos'
+          );
+          expect(
+            FlutterPostSubmitFileComparator.isAvailableForEnvironment(platform),
+            isTrue,
+          );
+        });
+
+        test('returns true for Cirrus', () {
           platform = FakePlatform(
             environment: <String, String>{
               'FLUTTER_ROOT': _kFlutterRoot,
@@ -518,7 +636,7 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkiaGoldFileComparator.isAvailableForEnvironment(platform),
+            FlutterPostSubmitFileComparator.isAvailableForEnvironment(platform),
             isTrue,
           );
         });
@@ -535,7 +653,7 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkiaGoldFileComparator.isAvailableForEnvironment(platform),
+            FlutterPostSubmitFileComparator.isAvailableForEnvironment(platform),
             isFalse,
           );
         });
@@ -551,7 +669,7 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkiaGoldFileComparator.isAvailableForEnvironment(platform),
+            FlutterPostSubmitFileComparator.isAvailableForEnvironment(platform),
             isFalse,
           );
         });
@@ -566,7 +684,7 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkiaGoldFileComparator.isAvailableForEnvironment(platform),
+            FlutterPostSubmitFileComparator.isAvailableForEnvironment(platform),
             isFalse,
           );
         });
@@ -583,7 +701,7 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkiaGoldFileComparator.isAvailableForEnvironment(platform),
+            FlutterPostSubmitFileComparator.isAvailableForEnvironment(platform),
             isFalse,
           );
         });
@@ -595,13 +713,29 @@ void main() {
       final MockSkiaGoldClient mockSkiaClient = MockSkiaGoldClient();
 
       group('correctly determines testing environment', () {
-        test('returns true', () {
+        test('returns true for Cirrus', () {
           platform = FakePlatform(
             environment: <String, String>{
               'FLUTTER_ROOT': _kFlutterRoot,
               'CIRRUS_CI': 'true',
               'CIRRUS_PR': '1234',
               'GOLD_SERVICE_ACCOUNT' : 'service account...',
+            },
+            operatingSystem: 'macos'
+          );
+          expect(
+            FlutterPreSubmitFileComparator.isAvailableForEnvironment(platform),
+            isTrue,
+          );
+        });
+
+        test('returns true for Luci', () {
+          platform = FakePlatform(
+            environment: <String, String>{
+              'FLUTTER_ROOT': _kFlutterRoot,
+              'SWARMING_TASK_ID' : '12345678990',
+              'GOLDCTL' : 'goldctl',
+              'GOLD_TRYJOB' : 'git/ref/12345/head'
             },
             operatingSystem: 'macos'
           );
@@ -642,7 +776,7 @@ void main() {
           );
         });
 
-        test('returns false - not on Cirrus', () {
+        test('returns false - not on Cirrus or Luci', () {
           platform = FakePlatform(
             environment: <String, String>{
               'FLUTTER_ROOT': _kFlutterRoot,
@@ -749,7 +883,7 @@ void main() {
           );
         });
 
-        test('passes non-existent baseline for new test', () async {
+        testWithOutput('passes non-existent baseline for new test', () async {
           when(mockSkiaClient.cleanTestName('library.flutter.new_golden_test.1.png'))
             .thenReturn('flutter.new_golden_test.1');
           expect(
@@ -759,27 +893,14 @@ void main() {
             ),
             isTrue,
           );
-        });
+        }, 'No expectations provided by Skia Gold for test: library.flutter.new_golden_test.1.png. '
+           'This may be a new test. If this is an unexpected result, check https://flutter-gold.skia.org.\n');
       });
     });
 
     group('Skipping', () {
       group('correctly determines testing environment', () {
-        test('returns true on LUCI', () {
-          platform = FakePlatform(
-            environment: <String, String>{
-              'FLUTTER_ROOT': _kFlutterRoot,
-              'SWARMING_TASK_ID' : '1234567890',
-            },
-            operatingSystem: 'macos'
-          );
-          expect(
-            FlutterSkippingGoldenFileComparator.isAvailableForEnvironment(platform),
-            isTrue,
-          );
-        });
-
-        test('returns true on Cirrus', () {
+        test('returns true on Cirrus shards that don\'t run golden tests', () {
           platform = FakePlatform(
             environment: <String, String>{
               'FLUTTER_ROOT': _kFlutterRoot,
@@ -788,10 +909,11 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkippingGoldenFileComparator.isAvailableForEnvironment(platform),
+            FlutterSkippingFileComparator.isAvailableForEnvironment(platform),
             isTrue,
           );
         });
+
         test('returns false - no CI', () {
           platform = FakePlatform(
             environment: <String, String>{
@@ -800,7 +922,7 @@ void main() {
             operatingSystem: 'macos'
           );
           expect(
-            FlutterSkippingGoldenFileComparator.isAvailableForEnvironment(
+            FlutterSkippingFileComparator.isAvailableForEnvironment(
               platform),
             isFalse,
           );
@@ -848,7 +970,7 @@ void main() {
         );
       });
 
-      test('passes non-existent baseline for new test', () async {
+      testWithOutput('passes non-existent baseline for new test', () async {
         expect(
           await comparator.compare(
             Uint8List.fromList(_kFailPngBytes),
@@ -856,7 +978,10 @@ void main() {
           ),
           isTrue,
         );
-      });
+      }, 'No expectations provided by Skia Gold for test: library.flutter.new_golden_test.1. '
+         'This may be a new test. If this is an unexpected result, check https://flutter-gold.skia.org.\n'
+         'Validate image output found at flutter/test/library/'
+      );
 
       test('compare properly awaits validation & output before failing.', () async {
         final Completer<bool> completer = Completer<bool>();
@@ -891,7 +1016,7 @@ void main() {
           goldens: mockSkiaClient,
           baseDirectory: mockDirectory,
         );
-        expect(comparator.runtimeType, FlutterSkippingGoldenFileComparator);
+        expect(comparator.runtimeType, FlutterSkippingFileComparator);
 
         when(mockSkiaClient.getExpectations())
           .thenAnswer((_) => throw const SocketException("Can't reach Gold"));
@@ -900,7 +1025,7 @@ void main() {
           goldens: mockSkiaClient,
           baseDirectory: mockDirectory,
         );
-        expect(comparator.runtimeType, FlutterSkippingGoldenFileComparator);
+        expect(comparator.runtimeType, FlutterSkippingFileComparator);
       });
     });
   });

@@ -4,7 +4,6 @@
 
 import 'dart:async';
 
-import '../android/android_sdk.dart';
 import '../android/android_studio.dart';
 import '../base/common.dart';
 import '../convert.dart';
@@ -89,7 +88,7 @@ class ConfigCommand extends FlutterCommand {
     }
     return
       '\nSettings:\n$values\n\n'
-      'Analytics reporting is currently ${flutterUsage.enabled ? 'enabled' : 'disabled'}.';
+      'Analytics reporting is currently ${globals.flutterUsage.enabled ? 'enabled' : 'disabled'}.';
   }
 
   /// Return null to disable analytics recording of the `config` command.
@@ -114,10 +113,16 @@ class ConfigCommand extends FlutterCommand {
 
     if (argResults.wasParsed('analytics')) {
       final bool value = boolArg('analytics');
-      // We send the analytics event *before* toggling the flag intentionally
-      // to be sure that opt-out events are sent correctly.
+      // The tool sends the analytics event *before* toggling the flag
+      // intentionally to be sure that opt-out events are sent correctly.
       AnalyticsConfigEvent(enabled: value).send();
-      flutterUsage.enabled = value;
+      if (!value) {
+        // Normally, the tool waits for the analytics to all send before the
+        // tool exits, but only when analytics are enabled. When reporting that
+        // analytics have been disable, the wait must be done here instead.
+        await globals.flutterUsage.ensureAnalyticsSent();
+      }
+      globals.flutterUsage.enabled = value;
       globals.printStatus('Analytics reporting ${value ? 'enabled' : 'disabled'}.');
     }
 
@@ -172,8 +177,8 @@ class ConfigCommand extends FlutterCommand {
     if (results['android-studio-dir'] == null && androidStudio != null) {
       results['android-studio-dir'] = androidStudio.directory;
     }
-    if (results['android-sdk'] == null && androidSdk != null) {
-      results['android-sdk'] = androidSdk.directory;
+    if (results['android-sdk'] == null && globals.androidSdk != null) {
+      results['android-sdk'] = globals.androidSdk.directory;
     }
 
     globals.printStatus(const JsonEncoder.withIndent('  ').convert(results));

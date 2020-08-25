@@ -11,7 +11,6 @@ void main() {
     final String result = generateBootstrapScript(
       requireUrl: 'require.js',
       mapperUrl: 'mapper.js',
-      entrypoint: 'foo/bar/main.js',
     );
     // require js source is interpolated correctly.
     expect(result, contains('requireEl.src = "require.js";'));
@@ -19,17 +18,26 @@ void main() {
     expect(result, contains('mapperEl.src = "mapper.js";'));
     // data-main is set to correct bootstrap module.
     expect(result, contains('requireEl.setAttribute("data-main", "main_module.bootstrap");'));
-    // bootstrap main module has correct imports.
-    expect(result, contains('require(["foo/bar/main.js", "dart_sdk"],'
-      ' function(app, dart_sdk) {'));
   });
 
   test('generateMainModule embeds urls correctly', () {
     final String result = generateMainModule(
       entrypoint: 'foo/bar/main.js',
+      nullAssertions: false,
     );
     // bootstrap main module has correct defined module.
     expect(result, contains('define("main_module.bootstrap", ["foo/bar/main.js", "dart_sdk"], '
       'function(app, dart_sdk) {'));
+  });
+
+  test('generateMainModule includes null safety switches', () {
+    final String result = generateMainModule(
+      entrypoint: 'foo/bar/main.js',
+      nullAssertions: true,
+    );
+
+    expect(result, contains(
+'''  if (true) {
+    dart_sdk.dart.nonNullAsserts(true);'''));
   });
 }

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:ui' as ui show BoxHeightStyle, BoxWidthStyle;
 
 import 'package:flutter/gestures.dart';
@@ -241,6 +243,7 @@ class CupertinoTextField extends StatefulWidget {
     ToolbarOptions toolbarOptions,
     this.showCursor,
     this.autofocus = false,
+    this.obscuringCharacter = '•',
     this.obscureText = false,
     this.autocorrect = true,
     SmartDashesType smartDashesType,
@@ -257,6 +260,7 @@ class CupertinoTextField extends StatefulWidget {
     this.inputFormatters,
     this.enabled,
     this.cursorWidth = 2.0,
+    this.cursorHeight,
     this.cursorRadius = const Radius.circular(2.0),
     this.cursorColor,
     this.selectionHeightStyle = ui.BoxHeightStyle.tight,
@@ -268,9 +272,12 @@ class CupertinoTextField extends StatefulWidget {
     this.onTap,
     this.scrollController,
     this.scrollPhysics,
+    this.autofillHints,
+    this.restorationId,
   }) : assert(textAlign != null),
        assert(readOnly != null),
        assert(autofocus != null),
+       assert(obscuringCharacter != null && obscuringCharacter.length == 1),
        assert(obscureText != null),
        assert(autocorrect != null),
        smartDashesType = smartDashesType ?? (obscureText ? SmartDashesType.disabled : SmartDashesType.enabled),
@@ -297,6 +304,11 @@ class CupertinoTextField extends StatefulWidget {
        assert(clearButtonMode != null),
        assert(prefixMode != null),
        assert(suffixMode != null),
+       // Assert the following instead of setting it directly to avoid surprising the user by silently changing the value they set.
+       assert(!identical(textInputAction, TextInputAction.newline) ||
+         maxLines == 1 ||
+         !identical(keyboardType, TextInputType.text),
+         'Use keyboardType TextInputType.multiline when using TextInputAction.newline on a multiline TextField.'),
        keyboardType = keyboardType ?? (maxLines == 1 ? TextInputType.text : TextInputType.multiline),
        toolbarOptions = toolbarOptions ?? (obscureText ?
          const ToolbarOptions(
@@ -427,6 +439,9 @@ class CupertinoTextField extends StatefulWidget {
   /// {@macro flutter.widgets.editableText.autofocus}
   final bool autofocus;
 
+  /// {@macro flutter.widgets.editableText.obscuringCharacter}
+  final String obscuringCharacter;
+
   /// {@macro flutter.widgets.editableText.obscureText}
   final bool obscureText;
 
@@ -531,6 +546,9 @@ class CupertinoTextField extends StatefulWidget {
   /// {@macro flutter.widgets.editableText.cursorWidth}
   final double cursorWidth;
 
+  /// {@macro flutter.widgets.editableText.cursorHeight}
+  final double cursorHeight;
+
   /// {@macro flutter.widgets.editableText.cursorRadius}
   final Radius cursorRadius;
 
@@ -573,11 +591,18 @@ class CupertinoTextField extends StatefulWidget {
   /// {@macro flutter.widgets.editableText.scrollPhysics}
   final ScrollPhysics scrollPhysics;
 
-  /// {@macro flutter.rendering.editable.selectionEnabled}
+  /// {@macro flutter.widgets.editableText.selectionEnabled}
   bool get selectionEnabled => enableInteractiveSelection;
 
   /// {@macro flutter.material.textfield.onTap}
   final GestureTapCallback onTap;
+
+  /// {@macro flutter.widgets.editableText.autofillHints}
+  /// {@macro flutter.services.autofill.autofillHints}
+  final Iterable<String> autofillHints;
+
+  /// {@macro flutter.material.textfield.restorationId}
+  final String restorationId;
 
   @override
   _CupertinoTextFieldState createState() => _CupertinoTextFieldState();
@@ -597,6 +622,7 @@ class CupertinoTextField extends StatefulWidget {
     properties.add(DiagnosticsProperty<TextInputType>('keyboardType', keyboardType, defaultValue: TextInputType.text));
     properties.add(DiagnosticsProperty<TextStyle>('style', style, defaultValue: null));
     properties.add(DiagnosticsProperty<bool>('autofocus', autofocus, defaultValue: false));
+    properties.add(DiagnosticsProperty<String>('obscuringCharacter', obscuringCharacter, defaultValue: '•'));
     properties.add(DiagnosticsProperty<bool>('obscureText', obscureText, defaultValue: false));
     properties.add(DiagnosticsProperty<bool>('autocorrect', autocorrect, defaultValue: true));
     properties.add(EnumProperty<SmartDashesType>('smartDashesType', smartDashesType, defaultValue: obscureText ? SmartDashesType.disabled : SmartDashesType.enabled));
@@ -607,6 +633,9 @@ class CupertinoTextField extends StatefulWidget {
     properties.add(DiagnosticsProperty<bool>('expands', expands, defaultValue: false));
     properties.add(IntProperty('maxLength', maxLength, defaultValue: null));
     properties.add(FlagProperty('maxLengthEnforced', value: maxLengthEnforced, ifTrue: 'max length enforced'));
+    properties.add(DoubleProperty('cursorWidth', cursorWidth, defaultValue: 2.0));
+    properties.add(DoubleProperty('cursorHeight', cursorHeight, defaultValue: null));
+    properties.add(DiagnosticsProperty<Radius>('cursorRadius', cursorRadius, defaultValue: null));
     properties.add(createCupertinoColorProperty('cursorColor', cursorColor, defaultValue: null));
     properties.add(FlagProperty('selectionEnabled', value: selectionEnabled, defaultValue: true, ifFalse: 'selection disabled'));
     properties.add(DiagnosticsProperty<ScrollController>('scrollController', scrollController, defaultValue: null));
@@ -616,11 +645,11 @@ class CupertinoTextField extends StatefulWidget {
   }
 }
 
-class _CupertinoTextFieldState extends State<CupertinoTextField> with AutomaticKeepAliveClientMixin implements TextSelectionGestureDetectorBuilderDelegate {
+class _CupertinoTextFieldState extends State<CupertinoTextField> with RestorationMixin, AutomaticKeepAliveClientMixin implements TextSelectionGestureDetectorBuilderDelegate {
   final GlobalKey _clearGlobalKey = GlobalKey();
 
-  TextEditingController _controller;
-  TextEditingController get _effectiveController => widget.controller ?? _controller;
+  RestorableTextEditingController _controller;
+  TextEditingController get _effectiveController => widget.controller ?? _controller.value;
 
   FocusNode _focusNode;
   FocusNode get _effectiveFocusNode => widget.focusNode ?? (_focusNode ??= FocusNode());
@@ -645,8 +674,7 @@ class _CupertinoTextFieldState extends State<CupertinoTextField> with AutomaticK
     super.initState();
     _selectionGestureDetectorBuilder = _CupertinoTextFieldSelectionGestureDetectorBuilder(state: this);
     if (widget.controller == null) {
-      _controller = TextEditingController();
-      _controller.addListener(updateKeepAlive);
+      _createLocalController();
     }
   }
 
@@ -654,9 +682,10 @@ class _CupertinoTextFieldState extends State<CupertinoTextField> with AutomaticK
   void didUpdateWidget(CupertinoTextField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.controller == null && oldWidget.controller != null) {
-      _controller = TextEditingController.fromValue(oldWidget.controller.value);
-      _controller.addListener(updateKeepAlive);
+      _createLocalController(oldWidget.controller.value);
     } else if (widget.controller != null && oldWidget.controller == null) {
+      unregisterFromRestoration(_controller);
+      _controller.dispose();
       _controller = null;
     }
     final bool isEnabled = widget.enabled ?? true;
@@ -667,9 +696,35 @@ class _CupertinoTextFieldState extends State<CupertinoTextField> with AutomaticK
   }
 
   @override
+  void restoreState(RestorationBucket oldBucket, bool initialRestore) {
+    if (_controller != null) {
+      _registerController();
+    }
+  }
+
+  void _registerController() {
+    assert(_controller != null);
+    registerForRestoration(_controller, 'controller');
+    _controller.value.addListener(updateKeepAlive);
+  }
+
+  void _createLocalController([TextEditingValue value]) {
+    assert(_controller == null);
+    _controller = value == null
+        ? RestorableTextEditingController()
+        : RestorableTextEditingController.fromValue(value);
+    if (!restorePending) {
+      _registerController();
+    }
+  }
+
+  @override
+  String get restorationId => widget.restorationId;
+
+  @override
   void dispose() {
     _focusNode?.dispose();
-    _controller?.removeListener(updateKeepAlive);
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -711,7 +766,7 @@ class _CupertinoTextFieldState extends State<CupertinoTextField> with AutomaticK
   }
 
   @override
-  bool get wantKeepAlive => _controller?.text?.isNotEmpty == true;
+  bool get wantKeepAlive => _controller?.value?.text?.isNotEmpty == true;
 
   bool _shouldShowAttachment({
     OverlayVisibilityMode attachment,
@@ -897,56 +952,66 @@ class _CupertinoTextFieldState extends State<CupertinoTextField> with AutomaticK
       color: enabled ? decorationColor : (decorationColor ?? disabledColor),
     );
 
+    final Color selectionColor = CupertinoTheme.of(context).primaryColor.withOpacity(0.2);
+
     final Widget paddedEditable = Padding(
       padding: widget.padding,
       child: RepaintBoundary(
-        child: EditableText(
-          key: editableTextKey,
-          controller: controller,
-          readOnly: widget.readOnly,
-          toolbarOptions: widget.toolbarOptions,
-          showCursor: widget.showCursor,
-          showSelectionHandles: _showSelectionHandles,
-          focusNode: _effectiveFocusNode,
-          keyboardType: widget.keyboardType,
-          textInputAction: widget.textInputAction,
-          textCapitalization: widget.textCapitalization,
-          style: textStyle,
-          strutStyle: widget.strutStyle,
-          textAlign: widget.textAlign,
-          autofocus: widget.autofocus,
-          obscureText: widget.obscureText,
-          autocorrect: widget.autocorrect,
-          smartDashesType: widget.smartDashesType,
-          smartQuotesType: widget.smartQuotesType,
-          enableSuggestions: widget.enableSuggestions,
-          maxLines: widget.maxLines,
-          minLines: widget.minLines,
-          expands: widget.expands,
-          selectionColor: CupertinoTheme.of(context).primaryColor.withOpacity(0.2),
-          selectionControls: widget.selectionEnabled
-            ? cupertinoTextSelectionControls : null,
-          onChanged: widget.onChanged,
-          onSelectionChanged: _handleSelectionChanged,
-          onEditingComplete: widget.onEditingComplete,
-          onSubmitted: widget.onSubmitted,
-          inputFormatters: formatters,
-          rendererIgnoresPointer: true,
-          cursorWidth: widget.cursorWidth,
-          cursorRadius: widget.cursorRadius,
-          cursorColor: cursorColor,
-          cursorOpacityAnimates: true,
-          cursorOffset: cursorOffset,
-          paintCursorAboveText: true,
-          backgroundCursorColor: CupertinoDynamicColor.resolve(CupertinoColors.inactiveGray, context),
-          selectionHeightStyle: widget.selectionHeightStyle,
-          selectionWidthStyle: widget.selectionWidthStyle,
-          scrollPadding: widget.scrollPadding,
-          keyboardAppearance: keyboardAppearance,
-          dragStartBehavior: widget.dragStartBehavior,
-          scrollController: widget.scrollController,
-          scrollPhysics: widget.scrollPhysics,
-          enableInteractiveSelection: widget.enableInteractiveSelection,
+        child: UnmanagedRestorationScope(
+          bucket: bucket,
+          child: EditableText(
+            key: editableTextKey,
+            controller: controller,
+            readOnly: widget.readOnly,
+            toolbarOptions: widget.toolbarOptions,
+            showCursor: widget.showCursor,
+            showSelectionHandles: _showSelectionHandles,
+            focusNode: _effectiveFocusNode,
+            keyboardType: widget.keyboardType,
+            textInputAction: widget.textInputAction,
+            textCapitalization: widget.textCapitalization,
+            style: textStyle,
+            strutStyle: widget.strutStyle,
+            textAlign: widget.textAlign,
+            autofocus: widget.autofocus,
+            obscuringCharacter: widget.obscuringCharacter,
+            obscureText: widget.obscureText,
+            autocorrect: widget.autocorrect,
+            smartDashesType: widget.smartDashesType,
+            smartQuotesType: widget.smartQuotesType,
+            enableSuggestions: widget.enableSuggestions,
+            maxLines: widget.maxLines,
+            minLines: widget.minLines,
+            expands: widget.expands,
+            selectionColor: selectionColor,
+            selectionControls: widget.selectionEnabled
+              ? cupertinoTextSelectionControls : null,
+            onChanged: widget.onChanged,
+            onSelectionChanged: _handleSelectionChanged,
+            onEditingComplete: widget.onEditingComplete,
+            onSubmitted: widget.onSubmitted,
+            inputFormatters: formatters,
+            rendererIgnoresPointer: true,
+            cursorWidth: widget.cursorWidth,
+            cursorHeight: widget.cursorHeight,
+            cursorRadius: widget.cursorRadius,
+            cursorColor: cursorColor,
+            cursorOpacityAnimates: true,
+            cursorOffset: cursorOffset,
+            paintCursorAboveText: true,
+            autocorrectionTextRectColor: selectionColor,
+            backgroundCursorColor: CupertinoDynamicColor.resolve(CupertinoColors.inactiveGray, context),
+            selectionHeightStyle: widget.selectionHeightStyle,
+            selectionWidthStyle: widget.selectionWidthStyle,
+            scrollPadding: widget.scrollPadding,
+            keyboardAppearance: keyboardAppearance,
+            dragStartBehavior: widget.dragStartBehavior,
+            scrollController: widget.scrollController,
+            scrollPhysics: widget.scrollPhysics,
+            enableInteractiveSelection: widget.enableInteractiveSelection,
+            autofillHints: widget.autofillHints,
+            restorationId: 'editable',
+          ),
         ),
       ),
     );

@@ -110,7 +110,7 @@ class ProcessRunner {
   /// [Directory.current] if [defaultWorkingDirectory] is not set.
   ///
   /// Set `failOk` if [runProcess] should not throw an exception when the
-  /// command completes with a a non-zero exit code.
+  /// command completes with a non-zero exit code.
   Future<String> runProcess(
     List<String> commandLine, {
     Directory workingDirectory,
@@ -368,6 +368,14 @@ class ArchiveCreator {
     // the archive, but some are checked in, and we don't want to skip
     // those.
     await _runGit(<String>['clean', '-f', '-X', '**/.packages']);
+    /// Remove package_config files and any contents in .dart_tool
+    await _runGit(<String>['clean', '-f', '-X', '**/.dart_tool']);
+    /// Remove git subfolder from .pub-cache, this contains the flutter goldens
+    /// and new flutter_gallery.
+    final Directory gitCache = Directory(path.join(flutterRoot.absolute.path, '.pub-cache', 'git'));
+    if (gitCache.existsSync()) {
+      gitCache.deleteSync(recursive: true);
+    }
   }
 
   /// Write the archive to the given output file.

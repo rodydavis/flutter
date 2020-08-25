@@ -84,7 +84,7 @@ class _MockHttpOverrides extends HttpOverrides {
         'Warning: At least one test in this suite creates an HttpClient. When\n'
         'running a test suite that uses TestWidgetsFlutterBinding, all HTTP\n'
         'requests will return status code 400, and no network request will\n'
-        'actually be made. Any test expecting an real network connection and\n'
+        'actually be made. Any test expecting a real network connection and\n'
         'status code will fail.\n'
         'To test code that needs an HttpClient, provide your own HttpClient\n'
         'implementation to the code under test, so that your test can\n'
@@ -227,6 +227,11 @@ class _MockHttpRequest extends HttpClientRequest {
   Future<HttpClientResponse> close() {
     return Future<HttpClientResponse>.value(_MockHttpResponse());
   }
+
+  // TODO(zichangguo): remove the ignore after the change in dart:io lands.
+  @override
+  // ignore: override_on_non_overriding_member
+  void abort([Object exception, StackTrace stackTrace]) {}
 
   @override
   HttpConnectionInfo get connectionInfo => null;

@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:async';
 import 'dart:developer';
 import 'dart:typed_data';
@@ -14,6 +16,7 @@ import 'package:flutter/services.dart';
 
 import 'box.dart';
 import 'debug.dart';
+import 'mouse_tracking.dart';
 import 'object.dart';
 import 'view.dart';
 
@@ -153,7 +156,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   MouseTracker _mouseTracker;
 
   /// The render tree's owner, which maintains dirty state for layout,
-  /// composite, paint, and accessibility semantics
+  /// composite, paint, and accessibility semantics.
   PipelineOwner get pipelineOwner => _pipelineOwner;
   PipelineOwner _pipelineOwner;
 
@@ -245,7 +248,19 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   @visibleForTesting
   void initMouseTracker([MouseTracker tracker]) {
     _mouseTracker?.dispose();
-    _mouseTracker = tracker ?? MouseTracker(pointerRouter, renderView.hitTestMouseTrackers);
+    _mouseTracker = tracker ?? MouseTracker();
+  }
+
+  @override // from GestureBinding
+  void dispatchEvent(PointerEvent event, HitTestResult hitTestResult) {
+    if (hitTestResult != null ||
+        event is PointerHoverEvent ||
+        event is PointerAddedEvent ||
+        event is PointerRemovedEvent) {
+      _mouseTracker.updateWithEvent(event,
+          () => hitTestResult ?? renderView.hitTestMouseTrackers(event.position));
+    }
+    super.dispatchEvent(event, hitTestResult);
   }
 
   void _handleSemanticsEnabledChanged() {
@@ -281,7 +296,24 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
 
   void _handlePersistentFrameCallback(Duration timeStamp) {
     drawFrame();
-    _mouseTracker.schedulePostFrameCheck();
+    _scheduleMouseTrackerUpdate();
+  }
+
+  bool _debugMouseTrackerUpdateScheduled = false;
+  void _scheduleMouseTrackerUpdate() {
+    assert(!_debugMouseTrackerUpdateScheduled);
+    assert(() {
+      _debugMouseTrackerUpdateScheduled = true;
+      return true;
+    }());
+    SchedulerBinding.instance.addPostFrameCallback((Duration duration) {
+      assert(_debugMouseTrackerUpdateScheduled);
+      assert(() {
+        _debugMouseTrackerUpdateScheduled = false;
+        return true;
+      }());
+      _mouseTracker.updateAllDevices(renderView.hitTestMouseTrackers);
+    });
   }
 
   int _firstFrameDeferredCount = 0;
@@ -381,8 +413,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   /// sent to the GPU.
   ///
   /// 7. The semantics phase: All the dirty [RenderObject]s in the system have
-  /// their semantics updated (see [RenderObject.semanticsAnnotator]). This
-  /// generates the [SemanticsNode] tree. See
+  /// their semantics updated. This generates the [SemanticsNode] tree. See
   /// [RenderObject.markNeedsSemanticsUpdate] for further details on marking an
   /// object dirty for semantics.
   ///
@@ -411,7 +442,7 @@ mixin RendererBinding on BindingBase, ServicesBinding, SchedulerBinding, Gesture
   @override
   Future<void> performReassemble() async {
     await super.performReassemble();
-    Timeline.startSync('Dirty Render Tree', arguments: timelineWhitelistArguments);
+    Timeline.startSync('Dirty Render Tree', arguments: timelineArgumentsIndicatingLandmarkEvent);
     try {
       renderView.reassemble();
     } finally {
@@ -466,7 +497,7 @@ void debugDumpSemanticsTree(DebugSemanticsDumpOrder childOrder) {
 /// rendering layer directly. If you are writing to a higher-level
 /// library, such as the Flutter Widgets library, then you would use
 /// that layer's binding.
-class RenderingFlutterBinding extends BindingBase with GestureBinding, ServicesBinding, SchedulerBinding, SemanticsBinding, PaintingBinding, RendererBinding {
+class RenderingFlutterBinding extends BindingBase with GestureBinding, SchedulerBinding, ServicesBinding, SemanticsBinding, PaintingBinding, RendererBinding {
   /// Creates a binding for the rendering layer.
   ///
   /// The `root` render box is attached directly to the [renderView] and is

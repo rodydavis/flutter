@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -186,7 +188,7 @@ void main() {
               color: Colors.blue,
               child: Align(
                 alignment: Alignment.bottomCenter,
-                child: RaisedButton(
+                child: ElevatedButton(
                   child: const Text('bottomCenter button'),
                   onPressed: () {},
                 ),
@@ -201,7 +203,7 @@ void main() {
         );
 
         // Also check that the button alignment is true to expectations
-        final Finder button = find.byType(RaisedButton);
+        final Finder button = find.byType(ElevatedButton);
         expect(tester.getBottomLeft(button).dy, equals(600.0));
         expect(tester.getCenter(button).dx, equals(400.0));
 
@@ -259,7 +261,7 @@ void main() {
                 alignment: Alignment.center,
                 child: Padding(
                   padding: const EdgeInsets.all(50.0),
-                  child: RaisedButton(
+                  child: ElevatedButton(
                     child: const Text('center button'),
                     onPressed: () {},
                   ),
@@ -277,7 +279,7 @@ void main() {
         );
 
         // Also check that the button alignment is true to expectations
-        final Finder button = find.byType(RaisedButton);
+        final Finder button = find.byType(ElevatedButton);
         expect(tester.getBottomLeft(button).dy, equals(550.0));
         expect(tester.getCenter(button).dx, equals(400.0));
       });
@@ -296,7 +298,7 @@ void main() {
                   child: Center(child: FlutterLogo(size: 100)),
                   fit: FlexFit.loose,
                 ),
-                RaisedButton(
+                ElevatedButton(
                   child: const Text('Bottom'),
                   onPressed: () {},
                 ),
@@ -320,7 +322,7 @@ void main() {
         expect(tester.getCenter(logo), const Offset(400.0, 351.0));
 
         // Also check that the button alignment is true to expectations
-        final Finder button = find.byType(RaisedButton);
+        final Finder button = find.byType(ElevatedButton);
         expect(
           tester.renderObject<RenderBox>(button).size,
           const Size(116.0, 48.0),
@@ -388,7 +390,7 @@ void main() {
                 color: Colors.blue,
                 child: Align(
                   alignment: Alignment.bottomCenter,
-                  child: RaisedButton(
+                  child: ElevatedButton(
                     child: const Text('bottomCenter button'),
                     onPressed: () {},
                   ),
@@ -411,7 +413,7 @@ void main() {
 
           // Also check that the button alignment is true to expectations, even with
           // child stretching to fill overscroll
-          final Finder button = find.byType(RaisedButton);
+          final Finder button = find.byType(ElevatedButton);
           expect(tester.getBottomLeft(button).dy, equals(600.0));
           expect(tester.getCenter(button).dx, equals(400.0));
 
@@ -445,7 +447,7 @@ void main() {
                   alignment: Alignment.center,
                   child: Padding(
                     padding: const EdgeInsets.all(50.0),
-                    child: RaisedButton(
+                    child: ElevatedButton(
                       child: const Text('center button'),
                       onPressed: () {},
                     ),
@@ -464,7 +466,7 @@ void main() {
             equals(148.0),
           );
           // Check that the button alignment is true to expectations
-          final Finder button = find.byType(RaisedButton);
+          final Finder button = find.byType(ElevatedButton);
           expect(tester.getBottomLeft(button).dy, equals(550.0));
           expect(tester.getCenter(button).dx, equals(400.0));
 
@@ -495,7 +497,9 @@ void main() {
             SliverFixedExtentList(
               itemExtent: 150,
               delegate: SliverChildBuilderDelegate(
-                  (BuildContext context, int index) => Container(color: Colors.amber),
+                (BuildContext context, int index) {
+                  return Semantics(label: index.toString(), child: Container(color: Colors.amber));
+                },
                 childCount: 5,
               ),
             ),
@@ -510,8 +514,12 @@ void main() {
           ];
 
           await tester.pumpWidget(boilerplate(slivers, controller: controller));
-          const BoxDecoration amberBox = BoxDecoration(color: Colors.amber);
-          const BoxDecoration blueBox = BoxDecoration(color: Colors.blue);
+
+          expect(find.byKey(key), findsNothing);
+          expect(
+            find.bySemanticsLabel('4'),
+            findsNothing,
+          );
 
           // Scroll to bottom
           controller.jumpTo(controller.position.maxScrollExtent);
@@ -520,8 +528,8 @@ void main() {
           // Check item at the end of the list
           expect(find.byKey(key), findsNothing);
           expect(
-            tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).last.decoration,
-            amberBox,
+            find.bySemanticsLabel('4'),
+            findsOneWidget,
           );
 
           // Overscroll
@@ -531,16 +539,16 @@ void main() {
           // Check for new item at the end of the now overscrolled list
           expect(find.byKey(key), findsOneWidget);
           expect(
-            tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).last.decoration,
-            blueBox,
+            find.bySemanticsLabel('4'),
+            findsOneWidget,
           );
 
           // Ensure overscroll retracts to original size after releasing gesture
           await tester.pumpAndSettle();
           expect(find.byKey(key), findsNothing);
           expect(
-            tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).last.decoration,
-            amberBox,
+            find.bySemanticsLabel('4'),
+            findsOneWidget,
           );
         }, variant: const TargetPlatformVariant(<TargetPlatform>{ TargetPlatform.iOS,  TargetPlatform.macOS }));
 
@@ -559,7 +567,7 @@ void main() {
                     child: Center(child: FlutterLogo(size: 100)),
                     fit: FlexFit.loose,
                   ),
-                  RaisedButton(
+                  ElevatedButton(
                     child: const Text('Bottom'),
                     onPressed: () {},
                   ),
@@ -583,7 +591,7 @@ void main() {
           expect(tester.getCenter(logo), const Offset(400.0, 351.0));
 
           // Also check that the button alignment is true to expectations.
-          final Finder button = find.byType(RaisedButton);
+          final Finder button = find.byType(ElevatedButton);
           expect(
             tester.renderObject<RenderBox>(button).size,
             const Size(116.0, 48.0),
@@ -633,7 +641,7 @@ void main() {
         }, variant: const TargetPlatformVariant(<TargetPlatform>{ TargetPlatform.iOS,  TargetPlatform.macOS }));
       });
 
-      group('fillOverscroll: true, is ignored on irrevelant platforms', () {
+      group('fillOverscroll: true, is ignored on irrelevant platforms', () {
         // Android/Other scroll physics when hasScrollBody: false, ignores fillOverscroll: true
         testWidgets('child without size is sized by extent', (WidgetTester tester) async {
           final List<Widget> slivers = <Widget>[
@@ -666,7 +674,7 @@ void main() {
                 color: Colors.blue,
                 child: Align(
                   alignment: Alignment.bottomCenter,
-                  child: RaisedButton(
+                  child: ElevatedButton(
                     child: const Text('bottomCenter button'),
                     onPressed: () {},
                   ),
@@ -688,7 +696,7 @@ void main() {
           );
 
           // Also check that the button alignment is true to expectations
-          final Finder button = find.byType(RaisedButton);
+          final Finder button = find.byType(ElevatedButton);
           expect(tester.getBottomLeft(button).dy, equals(600.0));
           expect(tester.getCenter(button).dx, equals(400.0));
         });
@@ -715,7 +723,7 @@ void main() {
                   alignment: Alignment.center,
                   child: Padding(
                     padding: const EdgeInsets.all(50.0),
-                    child: RaisedButton(
+                    child: ElevatedButton(
                       child: const Text('center button'),
                       onPressed: () {},
                     ),
@@ -735,7 +743,7 @@ void main() {
           );
 
           // Check that the button alignment is true to expectations
-          final Finder button = find.byType(RaisedButton);
+          final Finder button = find.byType(ElevatedButton);
           expect(tester.getBottomLeft(button).dy, equals(550.0));
           expect(tester.getCenter(button).dx, equals(400.0));
 
@@ -758,7 +766,9 @@ void main() {
             SliverFixedExtentList(
               itemExtent: 150,
               delegate: SliverChildBuilderDelegate(
-                  (BuildContext context, int index) => Container(color: Colors.amber),
+                (BuildContext context, int index) {
+                  return Semantics(label: index.toString(), child: Container(color: Colors.amber));
+                },
                 childCount: 5,
               ),
             ),
@@ -773,7 +783,12 @@ void main() {
           ];
 
           await tester.pumpWidget(boilerplate(slivers, controller: controller));
-          const BoxDecoration amberBox = BoxDecoration(color: Colors.amber);
+
+          expect(find.byKey(key), findsNothing);
+          expect(
+            find.bySemanticsLabel('4'),
+            findsNothing,
+          );
 
           // Scroll to bottom
           controller.jumpTo(controller.position.maxScrollExtent);
@@ -782,8 +797,8 @@ void main() {
           // End of list
           expect(find.byKey(key), findsNothing);
           expect(
-            tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).last.decoration,
-            amberBox,
+            find.bySemanticsLabel('4'),
+            findsOneWidget,
           );
 
           // Overscroll
@@ -792,8 +807,8 @@ void main() {
 
           expect(find.byKey(key), findsNothing);
           expect(
-            tester.widgetList<DecoratedBox>(find.byType(DecoratedBox)).last.decoration,
-            amberBox,
+            find.bySemanticsLabel('4'),
+            findsOneWidget,
           );
         });
       });

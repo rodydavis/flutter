@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
@@ -198,8 +200,7 @@ class InkRipple extends InteractiveInkFeature {
       ..forward();
     // This confirm may have been preceded by a cancel.
     _fadeInController.forward();
-    _fadeOutController
-      ..animateTo(1.0, duration: _kFadeOutDuration);
+    _fadeOutController.animateTo(1.0, duration: _kFadeOutDuration);
   }
 
   @override

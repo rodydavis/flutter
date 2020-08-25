@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -39,10 +41,13 @@ enum StretchMode {
 /// The part of a material design [AppBar] that expands, collapses, and
 /// stretches.
 ///
-/// Most commonly used in in the [SliverAppBar.flexibleSpace] field, a flexible
+/// Most commonly used in the [SliverAppBar.flexibleSpace] field, a flexible
 /// space bar expands and contracts as the app scrolls so that the [AppBar]
 /// reaches from the top of the app to the top of the scrolling contents of the
-/// app. Furthermore is included functionality for stretch behavior. When
+/// app. When using [SliverAppBar.flexibleSpace], the [SliverAppBar.expandedHeight]
+/// must be large enough to accommodate the [SliverAppBar.flexibleSpace] widget.
+///
+/// Furthermore is included functionality for stretch behavior. When
 /// [SliverAppBar.stretch] is true, and your [ScrollPhysics] allow for
 /// overscroll, this space will stretch with the overscroll.
 ///
@@ -174,7 +179,7 @@ class FlexibleSpaceBar extends StatefulWidget {
   /// Defaults to [CollapseMode.parallax].
   final CollapseMode collapseMode;
 
-  /// Stretch effect while over-scrolling,
+  /// Stretch effect while over-scrolling.
   ///
   /// Defaults to include [StretchMode.zoomBackground].
   final List<StretchMode> stretchModes;
@@ -188,7 +193,7 @@ class FlexibleSpaceBar extends StatefulWidget {
   ///
   /// By default the value of this property is
   /// `EdgeInsetsDirectional.only(start: 72, bottom: 16)` if the title is
-  /// not centered, `EdgeInsetsDirectional.only(start 0, bottom: 16)` otherwise.
+  /// not centered, `EdgeInsetsDirectional.only(start: 0, bottom: 16)` otherwise.
   final EdgeInsetsGeometry titlePadding;
 
   /// Wraps a widget that contains an [AppBar] to convey sizing information down
@@ -237,6 +242,8 @@ class _FlexibleSpaceBarState extends State<FlexibleSpaceBar> {
     switch (theme.platform) {
       case TargetPlatform.android:
       case TargetPlatform.fuchsia:
+      case TargetPlatform.linux:
+      case TargetPlatform.windows:
         return false;
       case TargetPlatform.iOS:
       case TargetPlatform.macOS:
@@ -296,42 +303,42 @@ class _FlexibleSpaceBarState extends State<FlexibleSpaceBar> {
           const double fadeEnd = 1.0;
           assert(fadeStart <= fadeEnd);
           final double opacity = 1.0 - Interval(fadeStart, fadeEnd).transform(t);
-          if (opacity > 0.0) {
-            double height = settings.maxExtent;
+          double height = settings.maxExtent;
 
-            // StretchMode.zoomBackground
-            if (widget.stretchModes.contains(StretchMode.zoomBackground) &&
-              constraints.maxHeight > height) {
-              height = constraints.maxHeight;
-            }
+          // StretchMode.zoomBackground
+          if (widget.stretchModes.contains(StretchMode.zoomBackground) &&
+            constraints.maxHeight > height) {
+            height = constraints.maxHeight;
+          }
+          children.add(Positioned(
+            top: _getCollapsePadding(t, settings),
+            left: 0.0,
+            right: 0.0,
+            height: height,
+            child: Opacity(
+              // IOS is relying on this semantics node to correctly traverse
+              // through the app bar when it is collapsed.
+              alwaysIncludeSemantics: true,
+              opacity: opacity,
+              child: widget.background,
+            ),
+          ));
 
-            children.add(Positioned(
-              top: _getCollapsePadding(t, settings),
-              left: 0.0,
-              right: 0.0,
-              height: height,
-              child: Opacity(
-                opacity: opacity,
-                child: widget.background,
-              ),
-            ));
-
-            // StretchMode.blurBackground
-            if (widget.stretchModes.contains(StretchMode.blurBackground) &&
-              constraints.maxHeight > settings.maxExtent) {
-              final double blurAmount = (constraints.maxHeight - settings.maxExtent) / 10;
-              children.add(Positioned.fill(
-                child: BackdropFilter(
-                  child: Container(
-                    color: Colors.transparent,
-                  ),
-                  filter: ui.ImageFilter.blur(
-                    sigmaX: blurAmount,
-                    sigmaY: blurAmount,
-                  )
+          // StretchMode.blurBackground
+          if (widget.stretchModes.contains(StretchMode.blurBackground) &&
+            constraints.maxHeight > settings.maxExtent) {
+            final double blurAmount = (constraints.maxHeight - settings.maxExtent) / 10;
+            children.add(Positioned.fill(
+              child: BackdropFilter(
+                child: Container(
+                  color: Colors.transparent,
+                ),
+                filter: ui.ImageFilter.blur(
+                  sigmaX: blurAmount,
+                  sigmaY: blurAmount,
                 )
-              ));
-            }
+              )
+            ));
           }
         }
 
@@ -345,8 +352,10 @@ class _FlexibleSpaceBarState extends State<FlexibleSpaceBar> {
             case TargetPlatform.macOS:
               title = widget.title;
               break;
-            case TargetPlatform.fuchsia:
             case TargetPlatform.android:
+            case TargetPlatform.fuchsia:
+            case TargetPlatform.linux:
+            case TargetPlatform.windows:
               title = Semantics(
                 namesRoute: true,
                 child: widget.title,
@@ -390,7 +399,15 @@ class _FlexibleSpaceBarState extends State<FlexibleSpaceBar> {
                   alignment: titleAlignment,
                   child: DefaultTextStyle(
                     style: titleStyle,
-                    child: title,
+                    child: LayoutBuilder(
+                      builder: (BuildContext context, BoxConstraints constraints) {
+                        return Container(
+                          width: constraints.maxWidth / scaleValue,
+                          alignment: titleAlignment,
+                          child: title,
+                        );
+                      }
+                    ),
                   ),
                 ),
               ),

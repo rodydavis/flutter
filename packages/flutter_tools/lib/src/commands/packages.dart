@@ -6,8 +6,8 @@ import 'dart:async';
 
 import '../base/common.dart';
 import '../base/os.dart';
-import '../cache.dart';
 import '../dart/pub.dart';
+import '../globals.dart' as globals;
 import '../project.dart';
 import '../reporting/reporting.dart';
 import '../runner/flutter_command.dart';
@@ -25,6 +25,7 @@ class PackagesCommand extends FlutterCommand {
     addSubcommand(PackagesForwardCommand('version', 'Print Pub version'));
     addSubcommand(PackagesForwardCommand('uploader', 'Manage uploaders for a package on pub.dev'));
     addSubcommand(PackagesForwardCommand('global', 'Work with Pub global packages'));
+    addSubcommand(PackagesForwardCommand('outdated', 'Analyze dependencies to find which ones can be upgraded', requiresPubspec: true));
     addSubcommand(PackagesPassthroughCommand());
   }
 
@@ -87,7 +88,7 @@ class PackagesGetCommand extends FlutterCommand {
     return usageValues;
   }
 
-  Future<void> _runPubGet(String directory) async {
+  Future<void> _runPubGet(String directory, FlutterProject flutterProject) async {
     final Stopwatch pubGetTimer = Stopwatch()..start();
     try {
       await pub.get(context: PubContext.pubGet,
@@ -95,12 +96,14 @@ class PackagesGetCommand extends FlutterCommand {
         upgrade: upgrade ,
         offline: boolArg('offline'),
         checkLastModified: false,
+        generateSyntheticPackage: flutterProject.manifest.generateSyntheticPackage,
       );
       pubGetTimer.stop();
-      flutterUsage.sendTiming('pub', 'get', pubGetTimer.elapsed, label: 'success');
-    } catch (_) {
+      globals.flutterUsage.sendTiming('pub', 'get', pubGetTimer.elapsed, label: 'success');
+    // Not limiting to catching Exception because the exception is rethrown.
+    } catch (_) { // ignore: avoid_catches_without_on_clauses
       pubGetTimer.stop();
-      flutterUsage.sendTiming('pub', 'get', pubGetTimer.elapsed, label: 'failure');
+      globals.flutterUsage.sendTiming('pub', 'get', pubGetTimer.elapsed, label: 'failure');
       rethrow;
     }
   }
@@ -119,15 +122,15 @@ class PackagesGetCommand extends FlutterCommand {
        '${ workingDirectory ?? "current working directory" }.'
       );
     }
-
-    await _runPubGet(target);
     final FlutterProject rootProject = FlutterProject.fromPath(target);
+
+    await _runPubGet(target, rootProject);
     await rootProject.ensureReadyForPlatformSpecificTooling(checkProjects: true);
 
     // Get/upgrade packages in example app as well
     if (rootProject.hasExampleApp) {
       final FlutterProject exampleProject = rootProject.example;
-      await _runPubGet(exampleProject.directory.path);
+      await _runPubGet(exampleProject.directory.path, exampleProject);
       await exampleProject.ensureReadyForPlatformSpecificTooling(checkProjects: true);
     }
 
@@ -160,7 +163,6 @@ class PackagesTestCommand extends FlutterCommand {
 
   @override
   Future<FlutterCommandResult> runCommand() async {
-    Cache.releaseLockEarly();
     await pub.batch(<String>['run', 'test', ...argResults.rest], context: PubContext.runTest, retry: false);
     return FlutterCommandResult.success();
   }
@@ -201,8 +203,7 @@ class PackagesPublishCommand extends FlutterCommand {
       if (boolArg('dry-run')) '--dry-run',
       if (boolArg('force')) '--force',
     ];
-    Cache.releaseLockEarly();
-    await pub.interactively(<String>['publish', ...args]);
+    await pub.interactively(<String>['publish', ...args], stdio: globals.stdio);
     return FlutterCommandResult.success();
   }
 }
@@ -232,8 +233,7 @@ class PackagesForwardCommand extends FlutterCommand {
 
   @override
   Future<FlutterCommandResult> runCommand() async {
-    Cache.releaseLockEarly();
-    await pub.interactively(<String>[_commandName, ...argResults.rest]);
+    await pub.interactively(<String>[_commandName, ...argResults.rest], stdio: globals.stdio);
     return FlutterCommandResult.success();
   }
 
@@ -260,8 +260,7 @@ class PackagesPassthroughCommand extends FlutterCommand {
 
   @override
   Future<FlutterCommandResult> runCommand() async {
-    Cache.releaseLockEarly();
-    await pub.interactively(argResults.rest);
+    await pub.interactively(argResults.rest, stdio: globals.stdio);
     return FlutterCommandResult.success();
   }
 }

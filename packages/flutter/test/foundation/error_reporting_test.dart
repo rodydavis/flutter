@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 @TestOn('!chrome') // web has different stack traces
 
 import 'dart:async';
@@ -81,11 +83,6 @@ Future<void> main() async {
       r'#2      getSampleStack \([^)]+flutter/test/foundation/error_reporting_test\.dart:[0-9]+:[0-9]+\)\n'
       r'#3      main \([^)]+flutter/test/foundation/error_reporting_test\.dart:[0-9]+:[0-9]+\)\n'
       r'(.+\n)+' // TODO(ianh): when fixing #4021, also filter out frames from the test infrastructure below the first call to our main()
-      r'\(elided [0-9]+ frames from class _RawReceivePortImpl and dart:async\)\n'
-      r'\n'
-      r'line 1 of extra information\n'
-      r'line 2 of extra information\n'
-      r'════════════════════════════════════════════════════════════════════════════════════════════════════$',
     ));
     console.clear();
     FlutterError.dumpErrorToConsole(FlutterErrorDetails(
@@ -153,11 +150,6 @@ Future<void> main() async {
       r'#2      getSampleStack \([^)]+flutter/test/foundation/error_reporting_test\.dart:[0-9]+:[0-9]+\)\n'
       r'#3      main \([^)]+flutter/test/foundation/error_reporting_test\.dart:[0-9]+:[0-9]+\)\n'
       r'(.+\n)+' // TODO(ianh): when fixing #4021, also filter out frames from the test infrastructure below the first call to our main()
-      r'\(elided [0-9]+ frames from class _RawReceivePortImpl and dart:async\)\n'
-      r'\n'
-      r'line 1 of extra information\n'
-      r'line 2 of extra information\n'
-      r'════════════════════════════════════════════════════════════════════════════════════════════════════$',
     ));
     console.clear();
     FlutterError.dumpErrorToConsole(FlutterErrorDetails(
@@ -170,22 +162,24 @@ Future<void> main() async {
 
   test('Error reporting - NoSuchMethodError', () async {
     expect(console, isEmpty);
-    final dynamic exception = NoSuchMethodError(5, #foo, <dynamic>[2, 4], null); // ignore: deprecated_member_use
+    final dynamic exception = NoSuchMethodError.withInvocation(5,
+        Invocation.method(#foo, <dynamic>[2, 4]));
+
     FlutterError.dumpErrorToConsole(FlutterErrorDetails(
       exception: exception,
     ));
     expect(console.join('\n'), matches(
       r'^══╡ EXCEPTION CAUGHT BY FLUTTER FRAMEWORK ╞═════════════════════════════════════════════════════════\n'
       r'The following NoSuchMethodError was thrown:\n'
-      r'Receiver: 5\n'
-      r'Tried calling: foo = 2, 4\n'
+      r'int has no foo method accepting arguments \(_, _\)\n'
       r'════════════════════════════════════════════════════════════════════════════════════════════════════$',
     ));
     console.clear();
     FlutterError.dumpErrorToConsole(FlutterErrorDetails(
       exception: exception,
     ));
-    expect(console.join('\n'), 'Another exception was thrown: NoSuchMethodError: Receiver: 5');
+    expect(console.join('\n'),
+      'Another exception was thrown: NoSuchMethodError: int has no foo method accepting arguments (_, _)');
     console.clear();
     FlutterError.resetErrorCount();
   });
@@ -208,5 +202,24 @@ Future<void> main() async {
     expect(console.join('\n'), 'Another exception was thrown: hello again');
     console.clear();
     FlutterError.resetErrorCount();
+  });
+
+  // Regression test for https://github.com/flutter/flutter/issues/62223
+  test('Error reporting - empty stack', () async {
+    expect(console, isEmpty);
+    FlutterError.dumpErrorToConsole(FlutterErrorDetails(
+      exception: 'exception - empty stack',
+      stack: StackTrace.fromString(''),
+    ));
+    expect(console.join('\n'), matches(
+      r'^══╡ EXCEPTION CAUGHT BY FLUTTER FRAMEWORK ╞═════════════════════════════════════════════════════════\n'
+      r'The following message was thrown:\n'
+      r'exception - empty stack\n'
+      r'\n'
+      r'When the exception was thrown, this was the stack:\n'
+      r'...\n'
+      r'════════════════════════════════════════════════════════════════════════════════════════════════════$',
+    ));
+    console.clear();
   });
 }

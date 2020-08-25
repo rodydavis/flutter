@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
+import 'dart:collection';
 import 'dart:math' as math;
 import 'dart:ui' as ui show Gradient, Shader, TextBox, PlaceholderAlignment, TextHeightBehavior;
 
@@ -266,7 +269,7 @@ class RenderParagraph extends RenderBox
     markNeedsLayout();
   }
 
-  /// {@macro flutter.widgets.basic.TextWidthBasis}
+  /// {@macro flutter.painting.textPainter.textWidthBasis}
   TextWidthBasis get textWidthBasis => _textPainter.textWidthBasis;
   set textWidthBasis(TextWidthBasis value) {
     assert(value != null);
@@ -369,6 +372,9 @@ class RenderParagraph extends RenderBox
     RenderBox child = firstChild;
     final List<PlaceholderDimensions> placeholderDimensions = List<PlaceholderDimensions>(childCount);
     int childIndex = 0;
+    // Takes textScaleFactor into account because the content of the placeholder
+    // span will be scale up when it paints.
+    height = height / textScaleFactor;
     while (child != null) {
       // Height and baseline is irrelevant as all text will be laid
       // out in a single line.
@@ -387,6 +393,9 @@ class RenderParagraph extends RenderBox
     RenderBox child = firstChild;
     final List<PlaceholderDimensions> placeholderDimensions = List<PlaceholderDimensions>(childCount);
     int childIndex = 0;
+    // Takes textScaleFactor into account because the content of the placeholder
+    // span will be scale up when it paints.
+    height = height / textScaleFactor;
     while (child != null) {
       final double intrinsicWidth = child.getMinIntrinsicWidth(height);
       final double intrinsicHeight = child.getMinIntrinsicHeight(intrinsicWidth);
@@ -405,6 +414,9 @@ class RenderParagraph extends RenderBox
     RenderBox child = firstChild;
     final List<PlaceholderDimensions> placeholderDimensions = List<PlaceholderDimensions>(childCount);
     int childIndex = 0;
+    // Takes textScaleFactor into account because the content of the placeholder
+    // span will be scale up when it paints.
+    width = width / textScaleFactor;
     while (child != null) {
       final double intrinsicHeight = child.getMinIntrinsicHeight(width);
       final double intrinsicWidth = child.getMinIntrinsicWidth(intrinsicHeight);
@@ -523,13 +535,16 @@ class RenderParagraph extends RenderBox
     RenderBox child = firstChild;
     _placeholderDimensions = List<PlaceholderDimensions>(childCount);
     int childIndex = 0;
+    BoxConstraints boxConstraints = BoxConstraints(maxWidth: constraints.maxWidth);
+    // The content will be enlarged by textScaleFactor during painting phase.
+    // We reduce constraint by textScaleFactor so that the content will fit
+    // into the box once it is enlarged.
+    boxConstraints = boxConstraints / textScaleFactor;
     while (child != null) {
       // Only constrain the width to the maximum width of the paragraph.
       // Leave height unconstrained, which will overflow if expanded past.
       child.layout(
-        BoxConstraints(
-          maxWidth: constraints.maxWidth,
-        ),
+        boxConstraints,
         parentUsesSize: true,
       );
       double baselineOffset;
@@ -575,6 +590,7 @@ class RenderParagraph extends RenderBox
 
   @override
   void performLayout() {
+    final BoxConstraints constraints = this.constraints;
     _layoutChildren(constraints);
     _layoutTextWithConstraints(constraints);
     _setParentData();
@@ -843,6 +859,12 @@ class RenderParagraph extends RenderBox
     }
   }
 
+  // Caches [SemanticsNode]s created during [assembleSemanticsNode] so they
+  // can be re-used when [assembleSemanticsNode] is called again. This ensures
+  // stable ids for the [SemanticsNode]s of [TextSpan]s across
+  // [assembleSemanticsNode] invocations.
+  Queue<SemanticsNode> _cachedChildNodes;
+
   @override
   void assembleSemanticsNode(SemanticsNode node, SemanticsConfiguration config, Iterable<SemanticsNode> children) {
     assert(_semanticsInfo != null && _semanticsInfo.isNotEmpty);
@@ -853,6 +875,7 @@ class RenderParagraph extends RenderBox
     int start = 0;
     int placeholderIndex = 0;
     RenderBox child = firstChild;
+    final Queue<SemanticsNode> newChildCache = Queue<SemanticsNode>();
     for (final InlineSpanSemanticsInformation info in _combineSemanticsInfo()) {
       final TextDirection initialDirection = currentDirection;
       final TextSelection selection = TextSelection(
@@ -907,21 +930,34 @@ class RenderParagraph extends RenderBox
           if (recognizer is TapGestureRecognizer) {
             configuration.onTap = recognizer.onTap;
             configuration.isLink = true;
+          } else if (recognizer is DoubleTapGestureRecognizer) {
+            configuration.onTap = recognizer.onDoubleTap;
+            configuration.isLink = true;
           } else if (recognizer is LongPressGestureRecognizer) {
             configuration.onLongPress = recognizer.onLongPress;
           } else {
-            assert(false);
+            assert(false, '${recognizer.runtimeType} is not supported.');
           }
         }
-        newChildren.add(
-          SemanticsNode()
-            ..updateWith(config: configuration)
-            ..rect = currentRect,
-        );
+        final SemanticsNode newChild = (_cachedChildNodes?.isNotEmpty == true)
+            ? _cachedChildNodes.removeFirst()
+            : SemanticsNode();
+        newChild
+          ..updateWith(config: configuration)
+          ..rect = currentRect;
+        newChildCache.addLast(newChild);
+        newChildren.add(newChild);
       }
       start += info.text.length;
     }
+    _cachedChildNodes = newChildCache;
     node.updateWith(config: config, childrenInInversePaintOrder: newChildren);
+  }
+
+  @override
+  void clearSemantics() {
+    super.clearSemantics();
+    _cachedChildNodes = null;
   }
 
   @override

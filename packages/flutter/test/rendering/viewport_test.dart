@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 // This file is separate from viewport_caching_test.dart because we can't use
 // both testWidgets and rendering_tester in the same file - testWidgets will
 // initialize a binding, which rendering_tester will attempt to re-initialize
@@ -196,7 +198,7 @@ void main() {
     revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTWH(40.0, 40.0, 10.0, 10.0));
     expect(revealed.offset, 360.0);
     expect(revealed.rect, const Rect.fromLTWH(0.0, 40.0, 10.0, 10.0));
-  }, skip: isBrowser);
+  });
 
   testWidgets('Viewport getOffsetToReveal Sliver - down', (WidgetTester tester) async {
     final List<Widget> children = <Widget>[];
@@ -218,7 +220,7 @@ void main() {
                 );
                 children.add(sliver);
                 return SliverPadding(
-                  padding: const EdgeInsets.all(22.0),
+                  padding: const EdgeInsets.only(top: 22.0, bottom: 23.0),
                   sliver: sliver,
                 );
               }),
@@ -232,10 +234,16 @@ void main() {
 
     final RenderObject target = tester.renderObject(find.byWidget(children[5], skipOffstage: false));
     RevealedOffset revealed = viewport.getOffsetToReveal(target, 0.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22);
 
     revealed = viewport.getOffsetToReveal(target, 1.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22 - 100);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22 - 100);
+
+    // With rect specified.
+    revealed = viewport.getOffsetToReveal(target, 0.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22 + 2);
+    revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22 - (200 - 4));
   });
 
   testWidgets('Viewport getOffsetToReveal Sliver - right', (WidgetTester tester) async {
@@ -259,7 +267,7 @@ void main() {
                 );
                 children.add(sliver);
                 return SliverPadding(
-                  padding: const EdgeInsets.all(22.0),
+                  padding: const EdgeInsets.only(left: 22.0, right: 23.0),
                   sliver: sliver,
                 );
               }),
@@ -273,10 +281,16 @@ void main() {
 
     final RenderObject target = tester.renderObject(find.byWidget(children[5], skipOffstage: false));
     RevealedOffset revealed = viewport.getOffsetToReveal(target, 0.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22);
 
     revealed = viewport.getOffsetToReveal(target, 1.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22 - 100);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22 - 100);
+
+    // With rect specified.
+    revealed = viewport.getOffsetToReveal(target, 0.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22 + 1);
+    revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 22 - (200 - 3));
   });
 
   testWidgets('Viewport getOffsetToReveal Sliver - up', (WidgetTester tester) async {
@@ -300,7 +314,7 @@ void main() {
                 );
                 children.add(sliver);
                 return SliverPadding(
-                  padding: const EdgeInsets.all(22.0),
+                  padding: const EdgeInsets.only(top: 22.0, bottom: 23.0),
                   sliver: sliver,
                 );
               }),
@@ -314,17 +328,25 @@ void main() {
 
     final RenderObject target = tester.renderObject(find.byWidget(children[5], skipOffstage: false));
     RevealedOffset revealed = viewport.getOffsetToReveal(target, 0.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22);
+    // Does not include the bottom padding of children[5] thus + 23 instead of + 22.
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 23);
 
     revealed = viewport.getOffsetToReveal(target, 1.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22 - 100);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 23 - 100);
+
+    // With rect specified.
+    revealed = viewport.getOffsetToReveal(target, 0.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 23 + (100 - 4));
+    revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, - 200 + 6 * (100 + 22 + 23) - 22 - 2);
   });
 
   testWidgets('Viewport getOffsetToReveal Sliver - up - reverse growth', (WidgetTester tester) async {
     const Key centerKey = ValueKey<String>('center');
+    const EdgeInsets padding = EdgeInsets.only(top: 22.0, bottom: 23.0);
     final Widget centerSliver = SliverPadding(
       key: centerKey,
-      padding: const EdgeInsets.all(22.0),
+      padding: padding,
       sliver: SliverToBoxAdapter(
         child: Container(
           height: 100.0,
@@ -337,7 +359,7 @@ void main() {
       child: const Text('Tile lower'),
     );
     final Widget lowerSliver = SliverPadding(
-      padding: const EdgeInsets.all(22.0),
+      padding: padding,
       sliver: SliverToBoxAdapter(
         child: lowerItem,
       ),
@@ -368,13 +390,20 @@ void main() {
 
     revealed = viewport.getOffsetToReveal(target, 1.0);
     expect(revealed.offset, - 100 - 22 - 100);
+
+    // With rect specified.
+    revealed = viewport.getOffsetToReveal(target, 0.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, - 22 - 4);
+    revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, -200 - 22 - 2);
   });
 
   testWidgets('Viewport getOffsetToReveal Sliver - left - reverse growth', (WidgetTester tester) async {
     const Key centerKey = ValueKey<String>('center');
+    const EdgeInsets padding = EdgeInsets.only(left: 22.0, right: 23.0);
     final Widget centerSliver = SliverPadding(
       key: centerKey,
-      padding: const EdgeInsets.all(22.0),
+      padding: padding,
       sliver: SliverToBoxAdapter(
         child: Container(
           width: 100.0,
@@ -387,7 +416,7 @@ void main() {
       child: const Text('Tile lower'),
     );
     final Widget lowerSliver = SliverPadding(
-      padding: const EdgeInsets.all(22.0),
+      padding: padding,
       sliver: SliverToBoxAdapter(
         child: lowerItem,
       ),
@@ -419,6 +448,12 @@ void main() {
 
     revealed = viewport.getOffsetToReveal(target, 1.0);
     expect(revealed.offset, - 100 - 22 - 200);
+
+    // With rect specified.
+    revealed = viewport.getOffsetToReveal(target, 0.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, - 22 - 3);
+    revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, - 300 - 22 - 1);
   });
 
   testWidgets('Viewport getOffsetToReveal Sliver - left', (WidgetTester tester) async {
@@ -443,7 +478,7 @@ void main() {
                 );
                 children.add(sliver);
                 return SliverPadding(
-                  padding: const EdgeInsets.all(22.0),
+                  padding: const EdgeInsets.only(left: 22.0, right: 23.0),
                   sliver: sliver,
                 );
               }),
@@ -457,10 +492,16 @@ void main() {
 
     final RenderObject target = tester.renderObject(find.byWidget(children[5], skipOffstage: false));
     RevealedOffset revealed = viewport.getOffsetToReveal(target, 0.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 23);
 
     revealed = viewport.getOffsetToReveal(target, 1.0);
-    expect(revealed.offset, 5 * (100 + 22 + 22) + 22 - 100);
+    expect(revealed.offset, 5 * (100 + 22 + 23) + 23 - 100);
+
+    // With rect specified.
+    revealed = viewport.getOffsetToReveal(target, 0.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, 6 * (100 + 22 + 23) - 22 - 3);
+    revealed = viewport.getOffsetToReveal(target, 1.0, rect: const Rect.fromLTRB(1, 2, 3, 4));
+    expect(revealed.offset, -200  + 6 * (100 + 22 + 23) - 22 - 1);
   });
 
   testWidgets('Nested Viewports showOnScreen', (WidgetTester tester) async {
@@ -984,6 +1025,56 @@ void main() {
     tester.renderObject(find.byWidget(children[1], skipOffstage: false)).showOnScreen();
     await tester.pumpAndSettle();
     expect(controller.offset, 300.0);
+  });
+
+  testWidgets('RenderViewportBase.showOnScreen reports the correct targetRect', (WidgetTester tester) async {
+    final ScrollController innerController = ScrollController();
+    final ScrollController outerController = ScrollController();
+
+    await tester.pumpWidget(
+      Directionality(
+        textDirection: TextDirection.ltr,
+        child: Center(
+          child: Container(
+            height: 300.0,
+            child: CustomScrollView(
+              cacheExtent: 0,
+              controller: outerController,
+              slivers: <Widget>[
+                SliverToBoxAdapter(
+                  child: Container(
+                    height: 300,
+                    child: CustomScrollView(
+                      controller: innerController,
+                      slivers: List<Widget>.generate(5, (int i) {
+                        return SliverToBoxAdapter(
+                          child: SizedBox(
+                            height: 300.0,
+                            child: Text('Tile $i'),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                ),
+                const SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: 300.0,
+                    child: Text('hidden'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    tester.renderObject(find.widgetWithText(SizedBox, 'Tile 1', skipOffstage: false)).showOnScreen();
+    await tester.pumpAndSettle();
+    // The inner viewport scrolls to reveal the 2nd tile.
+    expect(innerController.offset, 300.0);
+    expect(outerController.offset, 0);
   });
 
   group('unbounded constraints control test', () {

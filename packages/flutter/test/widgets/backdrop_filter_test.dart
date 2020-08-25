@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:ui';
 
 import 'package:flutter/widgets.dart';
@@ -45,5 +47,5 @@ void main() {
       find.byType(RepaintBoundary).first,
       matchesGoldenFile('backdrop_filter_test.cull_rect.png'),
     );
-  }, skip: isBrowser);
+  });
 }

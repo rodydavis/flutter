@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.10
 import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
@@ -28,7 +29,7 @@ class LocalFileComparator extends GoldenFileComparator {
 ///
 /// This method is not supported on the web and throws an [UnsupportedError]
 /// when called.
-ComparisonResult compareLists(List<int> test, List<int> master) {
+Future<ComparisonResult> compareLists(List<int> test, List<int> master) async {
   throw UnsupportedError('Golden testing is not supported on the web.');
 }
 

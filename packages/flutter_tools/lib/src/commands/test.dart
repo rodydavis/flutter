@@ -11,7 +11,6 @@ import '../base/file_system.dart';
 import '../build_info.dart';
 import '../bundle.dart';
 import '../cache.dart';
-import '../codegen.dart';
 import '../dart/pub.dart';
 import '../devfs.dart';
 import '../globals.dart' as globals;
@@ -23,7 +22,7 @@ import '../test/runner.dart';
 import '../test/test_wrapper.dart';
 import '../test/watcher.dart';
 
-class TestCommand extends FastFlutterCommand {
+class TestCommand extends FlutterCommand {
   TestCommand({
     bool verboseHelp = false,
     this.testWrapper = const TestWrapper(),
@@ -31,6 +30,9 @@ class TestCommand extends FastFlutterCommand {
   }) : assert(testWrapper != null) {
     requiresPubspecYaml();
     usesPubOption();
+    addNullSafetyModeOptions(hide: !verboseHelp);
+    usesTrackWidgetCreation(verboseHelp: verboseHelp);
+    addEnableExperimentation(hide: !verboseHelp);
     argParser
       ..addMultiOption('name',
         help: 'A regular expression matching substrings of the names of tests to run.',
@@ -41,6 +43,14 @@ class TestCommand extends FastFlutterCommand {
         help: 'A plain-text substring of the names of tests to run.',
         valueHelp: 'substring',
         splitCommas: false,
+      )
+      ..addOption('tags',
+        abbr: 't',
+        help: 'Run only tests associated with tags',
+      )
+      ..addOption('exclude-tags',
+        abbr: 'x',
+        help: 'Run only tests WITHOUT given tags',
       )
       ..addFlag('start-paused',
         defaultsTo: false,
@@ -106,11 +116,10 @@ class TestCommand extends FastFlutterCommand {
         help: 'The platform to run the unit tests on. Defaults to "tester".',
       )
       ..addOption('test-randomize-ordering-seed',
-        defaultsTo: '0',
-        help: 'If positive, use this as a seed to randomize the execution of '
-              'test cases (must be a 32bit unsigned integer).\n'
+        help: 'The seed to randomize the execution order of test cases.\n'
+              'Must be a 32bit unsigned integer or "random".\n'
               'If "random", pick a random seed to use.\n'
-              'If 0 or not set, do not randomize test case execution order.',
+              'If not passed, do not randomize test case execution order.',
       )
       ..addFlag('enable-vmservice',
         defaultsTo: false,
@@ -121,7 +130,6 @@ class TestCommand extends FastFlutterCommand {
               'This flag is ignored if --start-paused or coverage are requested. '
               'The vmservice will be enabled no matter what in those cases.'
       );
-    usesTrackWidgetCreation(verboseHelp: verboseHelp);
   }
 
   /// The interface for starting and configuring the tester.
@@ -147,7 +155,6 @@ class TestCommand extends FastFlutterCommand {
 
   @override
   Future<FlutterCommandResult> runCommand() async {
-    await globals.cache.updateAll(await requiredArtifacts);
     if (!globals.fs.isFileSync('pubspec.yaml')) {
       throwToolExit(
         'Error: No pubspec.yaml file found in the current working directory.\n'
@@ -155,13 +162,19 @@ class TestCommand extends FastFlutterCommand {
         "called *_test.dart and must reside in the package's 'test' "
         'directory (or one of its subdirectories).');
     }
+    final FlutterProject flutterProject = FlutterProject.current();
     if (shouldRunPub) {
-      await pub.get(context: PubContext.getVerifyContext(name), skipPubspecYamlCheck: true);
+      await pub.get(
+        context: PubContext.getVerifyContext(name),
+        skipPubspecYamlCheck: true,
+        generateSyntheticPackage: flutterProject.manifest.generateSyntheticPackage,
+      );
     }
     final bool buildTestAssets = boolArg('test-assets');
     final List<String> names = stringsArg('name');
     final List<String> plainNames = stringsArg('plain-name');
-    final FlutterProject flutterProject = FlutterProject.current();
+    final String tags = stringArg('tags');
+    final String excludeTags = stringArg('exclude-tags');
 
     if (buildTestAssets && flutterProject.manifest.assets.isNotEmpty) {
       await _buildTestAsset();
@@ -209,40 +222,21 @@ class TestCommand extends FastFlutterCommand {
       ];
     }
 
+    final bool machine = boolArg('machine');
     CoverageCollector collector;
     if (boolArg('coverage') || boolArg('merge-coverage')) {
-      final String projectName = FlutterProject.current().manifest.appName;
+      final String projectName = flutterProject.manifest.appName;
       collector = CoverageCollector(
+        verbose: !machine,
         libraryPredicate: (String libraryName) => libraryName.contains(projectName),
       );
     }
 
-    final bool machine = boolArg('machine');
-    if (collector != null && machine) {
-      throwToolExit("The test command doesn't support --machine and coverage together");
-    }
-
     TestWatcher watcher;
-    if (collector != null) {
+    if (machine) {
+      watcher = EventPrinter(parent: collector);
+    } else if (collector != null) {
       watcher = collector;
-    } else if (machine) {
-      watcher = EventPrinter();
-    }
-
-    Cache.releaseLockEarly();
-
-    // Run builders once before all tests.
-    if (flutterProject.hasBuilders) {
-      final CodegenDaemon codegenDaemon = await codeGenerator.daemon(flutterProject);
-      codegenDaemon.startBuild();
-      await for (final CodegenStatus status in codegenDaemon.buildResults) {
-        if (status == CodegenStatus.Succeeded) {
-          break;
-        }
-        if (status == CodegenStatus.Failed) {
-          throwToolExit('Code generation failed.');
-        }
-      }
     }
 
     final bool disableServiceAuthCodes =
@@ -254,6 +248,8 @@ class TestCommand extends FastFlutterCommand {
       workDir: workDir,
       names: names,
       plainNames: plainNames,
+      tags: tags,
+      excludeTags: excludeTags,
       watcher: watcher,
       enableObservatory: collector != null || startPaused || boolArg('enable-vmservice'),
       startPaused: startPaused,
@@ -268,6 +264,8 @@ class TestCommand extends FastFlutterCommand {
       flutterProject: flutterProject,
       web: stringArg('platform') == 'chrome',
       randomSeed: stringArg('test-randomize-ordering-seed'),
+      extraFrontEndOptions: getBuildInfo(forcedBuildMode: BuildMode.debug).extraFrontEndOptions,
+      nullAssertions: boolArg(FlutterOptions.kNullAssertions),
     );
 
     if (collector != null) {
@@ -288,7 +286,7 @@ class TestCommand extends FastFlutterCommand {
 
   Future<void> _buildTestAsset() async {
     final AssetBundle assetBundle = AssetBundleFactory.instance.createBundle();
-    final int build = await assetBundle.build();
+    final int build = await assetBundle.build(packagesPath: '.packages');
     if (build != 0) {
       throwToolExit('Error: Failed to build asset bundle');
     }

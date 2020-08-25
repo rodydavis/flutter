@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
@@ -192,9 +194,9 @@ abstract class CustomPainter extends Listenable {
   ///
   /// If the returned function is null, this painter will not contribute new
   /// [SemanticsNode]s to the semantics tree and the [CustomPaint] corresponding
-  /// to this painter will not create a semantics boundary. However, if
-  /// [CustomPaint.child] is not null, the child may contribute [SemanticsNode]s
-  /// to the tree.
+  /// to this painter will not create a semantics boundary. However, if the
+  /// child of a [CustomPaint] is not null, the child may contribute
+  /// [SemanticsNode]s to the tree.
   ///
   /// See also:
   ///
@@ -519,8 +521,9 @@ class RenderCustomPaint extends RenderProxyBox {
     markNeedsSemanticsUpdate();
   }
 
-  void _paintWithPainter(Canvas canvas, Offset offset, CustomPainter painter) {
-    int debugPreviousCanvasSaveCount;
+  void _paintWithPainter(Canvas canvas, Offset offset, CustomPainter/*!*/ painter) {
+    // TODO(ianh): make the next line final
+    /*late*/ int/*!*/ debugPreviousCanvasSaveCount;
     canvas.save();
     assert(() {
       debugPreviousCanvasSaveCount = canvas.getSaveCount();
@@ -601,10 +604,10 @@ class RenderCustomPaint extends RenderProxyBox {
   }
 
   /// Describe the semantics of the picture painted by the [painter].
-  List<SemanticsNode> _backgroundSemanticsNodes;
+  List<SemanticsNode/*!*/> _backgroundSemanticsNodes;
 
   /// Describe the semantics of the picture painted by the [foregroundPainter].
-  List<SemanticsNode> _foregroundSemanticsNodes;
+  List<SemanticsNode/*!*/> _foregroundSemanticsNodes;
 
   @override
   void assembleSemanticsNode(
@@ -673,7 +676,7 @@ class RenderCustomPaint extends RenderProxyBox {
   /// considered because there is only one type of [SemanticsNode]. There is no
   /// concept of a "forgotten" node in semantics, deactivated nodes, or global
   /// keys.
-  static List<SemanticsNode> _updateSemanticsChildren(
+  static List<SemanticsNode/*!*/> _updateSemanticsChildren(
     List<SemanticsNode> oldSemantics,
     List<CustomPainterSemantics> newChildSemantics,
   ) {
@@ -681,7 +684,7 @@ class RenderCustomPaint extends RenderProxyBox {
     newChildSemantics = newChildSemantics ?? const <CustomPainterSemantics>[];
 
     assert(() {
-      final Map<Key, int> keys = HashMap<Key, int>();
+      final Map<Key/*!*/, int> keys = HashMap<Key/*!*/, int>();
       final List<DiagnosticsNode> information = <DiagnosticsNode>[];
       for (int i = 0; i < newChildSemantics.length; i += 1) {
         final CustomPainterSemantics child = newChildSemantics[i];
@@ -706,7 +709,7 @@ class RenderCustomPaint extends RenderProxyBox {
     int newChildrenBottom = newChildSemantics.length - 1;
     int oldChildrenBottom = oldSemantics.length - 1;
 
-    final List<SemanticsNode> newChildren = List<SemanticsNode>(newChildSemantics.length);
+    final List<SemanticsNode/*!*/> newChildren = List<SemanticsNode/*!*/>(newChildSemantics.length);
 
     // Update the top of the list.
     while ((oldChildrenTop <= oldChildrenBottom) && (newChildrenTop <= newChildrenBottom)) {
@@ -732,7 +735,7 @@ class RenderCustomPaint extends RenderProxyBox {
 
     // Scan the old children in the middle of the list.
     final bool haveOldChildren = oldChildrenTop <= oldChildrenBottom;
-    Map<Key, SemanticsNode> oldKeyedChildren;
+    Map<Key/*!*/, SemanticsNode> oldKeyedChildren;
     if (haveOldChildren) {
       oldKeyedChildren = <Key, SemanticsNode>{};
       while (oldChildrenTop <= oldChildrenBottom) {

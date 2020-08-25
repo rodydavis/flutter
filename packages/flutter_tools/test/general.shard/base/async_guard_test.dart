@@ -6,7 +6,7 @@ import 'dart:async';
 
 import 'package:flutter_tools/src/base/async_guard.dart';
 import 'package:flutter_tools/src/base/common.dart';
-import 'package:quiver/testing/async.dart';
+import 'package:fake_async/fake_async.dart';
 
 import '../../src/common.dart';
 
@@ -197,7 +197,7 @@ void main() {
         );
         try {
           await f;
-        } catch (e) {
+        } on String {
           caughtByHandler = true;
         }
         if (!completer.isCompleted) {
@@ -235,7 +235,7 @@ void main() {
         );
         try {
           await f;
-        } catch (e) {
+        } on String {
           caughtByHandler = true;
         }
         if (!completer.isCompleted) {
@@ -275,7 +275,7 @@ void main() {
         );
         try {
           await f;
-        } catch (e) {
+        } on String {
           caughtByHandler = true;
         }
         if (!completer.isCompleted) {

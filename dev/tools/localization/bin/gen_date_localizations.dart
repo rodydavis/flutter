@@ -172,6 +172,7 @@ Set<String> _supportedLocales() {
     if (FileSystemEntity.isFileSync(filePath) && filenameRE.hasMatch(filePath))
       supportedLocales.add(filenameRE.firstMatch(filePath)[1]);
   }
+
   return supportedLocales;
 }
 

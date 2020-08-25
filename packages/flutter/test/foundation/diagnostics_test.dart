@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// @dart = 2.8
+
 import 'dart:convert';
 import 'dart:ui';
 
@@ -180,7 +182,7 @@ void validatePropertyJsonSerializationHelper(final Map<String, Object> json, Dia
   }
   expect(json['propertyType'], equals(property.propertyType.toString()));
   expect(json.containsKey('defaultLevel'), isTrue);
-  if (property.value is DiagnosticableMixin) {
+  if (property.value is Diagnosticable) {
     expect(json['isDiagnosticableValue'], isTrue);
   } else {
     expect(json.containsKey('isDiagnosticableValue'), isFalse);
@@ -901,6 +903,14 @@ void main() {
     expect(describeEnum(ExampleEnum.hello), equals('hello'));
     expect(describeEnum(ExampleEnum.world), equals('world'));
     expect(describeEnum(ExampleEnum.deferToChild), equals('deferToChild'));
+    expect(
+      () => describeEnum('Hello World'),
+      throwsA(isAssertionError.having(
+        (AssertionError e) => e.message,
+        'message',
+        'The provided object "Hello World" is not an enum.'),
+      ),
+    );
   });
 
   test('string property test', () {
@@ -1232,7 +1242,7 @@ void main() {
     expect(missing.isFiltered(DiagnosticLevel.info), isFalse);
     validateObjectFlagPropertyJsonSerialization(present);
     validateObjectFlagPropertyJsonSerialization(missing);
-  }, skip: isBrowser);
+  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/54221
 
   test('describe bool property', () {
     final FlagProperty yes = FlagProperty(
