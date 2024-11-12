@@ -2,12 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'package:flutter/gestures.dart';
-import 'package:vector_math/vector_math_64.dart';
-
-import '../flutter_test_alternative.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 class TestPointerSignalListener {
   TestPointerSignalListener(this.event);
@@ -44,6 +40,19 @@ void main() {
   test('Resolving with no entries should be a no-op', () {
     final PointerSignalTester tester = PointerSignalTester();
     tester.resolver.resolve(tester.event);
+  });
+
+  test('Resolving with no entries should notify engine of no-op', () {
+    bool allowedPlatformDefault = false;
+    final PointerSignalTester tester = PointerSignalTester();
+    tester.event = PointerScrollEvent(
+      onRespond: ({required bool allowPlatformDefault}) {
+        allowedPlatformDefault = allowPlatformDefault;
+      },
+    );
+    tester.resolver.resolve(tester.event);
+    expect(allowedPlatformDefault, isTrue,
+      reason: 'Should have called respond with allowPlatformDefault: true');
   });
 
   test('First entry should always win', () {

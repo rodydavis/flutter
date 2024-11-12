@@ -2,25 +2,22 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter/widgets.dart';
-import 'package:flutter/gestures.dart';
 
 void main() {
   testWidgets('Scrollable scaled up', (WidgetTester tester) async {
     final ScrollController controller = ScrollController();
+    addTearDown(controller.dispose);
+
     await tester.pumpWidget(
       MaterialApp(
         home: Transform.scale(
           scale: 2.0,
           child: Center(
-            child: Container(
+            child: SizedBox(
               width: 200,
               child: ListView.builder(
                 controller: controller,
@@ -28,7 +25,7 @@ void main() {
                 itemBuilder: (BuildContext context, int index) {
                   return Container(
                     height: 100.0,
-                    color: index % 2 == 0 ? Colors.blue : Colors.red,
+                    color: index.isEven ? Colors.blue : Colors.red,
                     child: Text('Tile $index'),
                   );
                 },
@@ -59,12 +56,14 @@ void main() {
 
   testWidgets('Scrollable scaled down', (WidgetTester tester) async {
     final ScrollController controller = ScrollController();
+    addTearDown(controller.dispose);
+
     await tester.pumpWidget(
       MaterialApp(
         home: Transform.scale(
           scale: 0.5,
           child: Center(
-            child: Container(
+            child: SizedBox(
               width: 200,
               child: ListView.builder(
                 controller: controller,
@@ -72,7 +71,7 @@ void main() {
                 itemBuilder: (BuildContext context, int index) {
                   return Container(
                     height: 100.0,
-                    color: index % 2 == 0 ? Colors.blue : Colors.red,
+                    color: index.isEven ? Colors.blue : Colors.red,
                     child: Text('Tile $index'),
                   );
                 },
@@ -103,12 +102,14 @@ void main() {
 
   testWidgets('Scrollable rotated 90 degrees', (WidgetTester tester) async {
     final ScrollController controller = ScrollController();
+    addTearDown(controller.dispose);
+
     await tester.pumpWidget(
       MaterialApp(
         home: Transform.rotate(
           angle: math.pi / 2,
           child: Center(
-            child: Container(
+            child: SizedBox(
               width: 200,
               child: ListView.builder(
                 controller: controller,
@@ -116,7 +117,7 @@ void main() {
                 itemBuilder: (BuildContext context, int index) {
                   return Container(
                     height: 100.0,
-                    color: index % 2 == 0 ? Colors.blue : Colors.red,
+                    color: index.isEven ? Colors.blue : Colors.red,
                     child: Text('Tile $index'),
                   );
                 },
@@ -143,6 +144,8 @@ void main() {
 
   testWidgets('Perspective transform on scrollable', (WidgetTester tester) async {
     final ScrollController controller = ScrollController();
+    addTearDown(controller.dispose);
+
     await tester.pumpWidget(
       MaterialApp(
         home: Transform(
@@ -150,7 +153,7 @@ void main() {
             ..setEntry(3, 2, 0.001)
             ..rotateX(math.pi / 4),
           child: Center(
-            child: Container(
+            child: SizedBox(
               width: 200,
               child: ListView.builder(
                 controller: controller,
@@ -158,7 +161,7 @@ void main() {
                 itemBuilder: (BuildContext context, int index) {
                   return Container(
                     height: 100.0,
-                    color: index % 2 == 0 ? Colors.blue : Colors.red,
+                    color: index.isEven ? Colors.blue : Colors.red,
                     child: Text('Tile $index'),
                   );
                 },

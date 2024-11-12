@@ -20,5 +20,12 @@
   "pasteButtonLabel": "ለጥፍ",
   "selectAllButtonLabel": "ሁሉንም ምረጥ",
   "tabSemanticsLabel": "ትር $tabIndex ከ$tabCount",
-  "modalBarrierDismissLabel": "አሰናብት"
+  "modalBarrierDismissLabel": "አሰናብት",
+  "searchTextFieldPlaceholderLabel": "ፍለጋ",
+  "noSpellCheckReplacementsLabel": "ምንም ተተኪዎች አልተገኙም",
+  "menuDismissLabel": "ምናሌን አሰናብት",
+  "lookUpButtonLabel": "ይመልከቱ",
+  "searchWebButtonLabel": "ድርን ፈልግ",
+  "shareButtonLabel": "አጋራ...",
+  "clearButtonLabel": "አጽዳ"
 }

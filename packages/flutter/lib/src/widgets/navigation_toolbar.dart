@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
+/// @docImport 'package:flutter/cupertino.dart';
+/// @docImport 'package:flutter/material.dart';
+library;
 
 import 'dart:math' as math;
-
-import 'package:flutter/rendering.dart';
 
 import 'basic.dart';
 import 'debug.dart';
@@ -28,28 +28,26 @@ class NavigationToolbar extends StatelessWidget {
   /// Creates a widget that lays out its children in a manner suitable for a
   /// toolbar.
   const NavigationToolbar({
-    Key key,
+    super.key,
     this.leading,
     this.middle,
     this.trailing,
     this.centerMiddle = true,
     this.middleSpacing = kMiddleSpacing,
-  }) : assert(centerMiddle != null),
-       assert(middleSpacing != null),
-       super(key: key);
+  });
 
   /// The default spacing around the [middle] widget in dp.
   static const double kMiddleSpacing = 16.0;
 
   /// Widget to place at the start of the horizontal toolbar.
-  final Widget leading;
+  final Widget? leading;
 
   /// Widget to place in the middle of the horizontal toolbar, occupying
   /// as much remaining space as possible.
-  final Widget middle;
+  final Widget? middle;
 
   /// Widget to place at the end of the horizontal toolbar.
-  final Widget trailing;
+  final Widget? trailing;
 
   /// Whether to align the [middle] widget to the center of this widget or
   /// next to the [leading] widget when false.
@@ -71,9 +69,9 @@ class NavigationToolbar extends StatelessWidget {
         textDirection: textDirection,
       ),
       children: <Widget>[
-        if (leading != null) LayoutId(id: _ToolbarSlot.leading, child: leading),
-        if (middle != null) LayoutId(id: _ToolbarSlot.middle, child: middle),
-        if (trailing != null) LayoutId(id: _ToolbarSlot.trailing, child: trailing),
+        if (leading != null) LayoutId(id: _ToolbarSlot.leading, child: leading!),
+        if (middle != null) LayoutId(id: _ToolbarSlot.middle, child: middle!),
+        if (trailing != null) LayoutId(id: _ToolbarSlot.trailing, child: trailing!),
       ],
     );
   }
@@ -87,11 +85,10 @@ enum _ToolbarSlot {
 
 class _ToolbarLayout extends MultiChildLayoutDelegate {
   _ToolbarLayout({
-    this.centerMiddle,
-    @required this.middleSpacing,
-    @required this.textDirection,
-  }) : assert(middleSpacing != null),
-       assert(textDirection != null);
+    required this.centerMiddle,
+    required this.middleSpacing,
+    required this.textDirection,
+  });
 
   // If false the middle widget should be start-justified within the space
   // between the leading and trailing widgets.
@@ -111,36 +108,25 @@ class _ToolbarLayout extends MultiChildLayoutDelegate {
 
     if (hasChild(_ToolbarSlot.leading)) {
       final BoxConstraints constraints = BoxConstraints(
-        minWidth: 0.0,
-        maxWidth: size.width / 3.0, // The leading widget shouldn't take up more than 1/3 of the space.
+        maxWidth: size.width,
         minHeight: size.height, // The height should be exactly the height of the bar.
         maxHeight: size.height,
       );
       leadingWidth = layoutChild(_ToolbarSlot.leading, constraints).width;
-      double leadingX;
-      switch (textDirection) {
-        case TextDirection.rtl:
-          leadingX = size.width - leadingWidth;
-          break;
-        case TextDirection.ltr:
-          leadingX = 0.0;
-          break;
-      }
+      final double leadingX = switch (textDirection) {
+        TextDirection.rtl => size.width - leadingWidth,
+        TextDirection.ltr => 0.0,
+      };
       positionChild(_ToolbarSlot.leading, Offset(leadingX, 0.0));
     }
 
     if (hasChild(_ToolbarSlot.trailing)) {
       final BoxConstraints constraints = BoxConstraints.loose(size);
       final Size trailingSize = layoutChild(_ToolbarSlot.trailing, constraints);
-      double trailingX;
-      switch (textDirection) {
-        case TextDirection.rtl:
-          trailingX = 0.0;
-          break;
-        case TextDirection.ltr:
-          trailingX = size.width - trailingSize.width;
-          break;
-      }
+      final double trailingX = switch (textDirection) {
+        TextDirection.rtl => 0.0,
+        TextDirection.ltr => size.width - trailingSize.width,
+      };
       final double trailingY = (size.height - trailingSize.height) / 2.0;
       trailingWidth = trailingSize.width;
       positionChild(_ToolbarSlot.trailing, Offset(trailingX, trailingY));
@@ -158,21 +144,17 @@ class _ToolbarLayout extends MultiChildLayoutDelegate {
       // widgets, then align its left or right edge with the adjacent boundary.
       if (centerMiddle) {
         middleStart = (size.width - middleSize.width) / 2.0;
-        if (middleStart + middleSize.width > size.width - trailingWidth)
-          middleStart = size.width - trailingWidth - middleSize.width;
-        else if (middleStart < middleStartMargin)
+        if (middleStart + middleSize.width > size.width - trailingWidth) {
+          middleStart = size.width - trailingWidth - middleSize.width - middleSpacing;
+        } else if (middleStart < middleStartMargin) {
           middleStart = middleStartMargin;
+        }
       }
 
-      double middleX;
-      switch (textDirection) {
-        case TextDirection.rtl:
-          middleX = size.width - middleSize.width - middleStart;
-          break;
-        case TextDirection.ltr:
-          middleX = middleStart;
-          break;
-      }
+      final double middleX = switch (textDirection) {
+        TextDirection.rtl => size.width - middleSize.width - middleStart,
+        TextDirection.ltr => middleStart,
+      };
 
       positionChild(_ToolbarSlot.middle, Offset(middleX, middleY));
     }

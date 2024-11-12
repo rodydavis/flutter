@@ -2,8 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+/// @docImport 'package:flutter/widgets.dart';
+///
+/// @docImport 'multidrag.dart';
+library;
 
 import 'drag_details.dart';
+
+export 'drag_details.dart' show DragEndDetails, DragUpdateDetails;
 
 /// Interface for objects that receive updates about drags.
 ///

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
+import 'package:flutter/foundation.dart';
 
 import 'framework.dart';
 
@@ -28,24 +28,30 @@ class DisposableBuildContext<T extends State> {
   ///
   /// Creators must call [dispose] when the [State] is disposed.
   ///
-  /// The [State] must not be null, and [State.mounted] must be true.
-  DisposableBuildContext(this._state)
-      : assert(_state != null),
-        assert(_state.mounted, 'A DisposableBuildContext was given a BuildContext for an Element that is not mounted.');
+  /// [State.mounted] must be true.
+  DisposableBuildContext(T this._state)
+      : assert(_state.mounted, 'A DisposableBuildContext was given a BuildContext for an Element that is not mounted.')  {
+    // TODO(polina-c): stop duplicating code across disposables
+    // https://github.com/flutter/flutter/issues/137435
+    if (kFlutterMemoryAllocationsEnabled) {
+      FlutterMemoryAllocations.instance.dispatchObjectCreated(
+        library: 'package:flutter/widgets.dart',
+        className: '$DisposableBuildContext',
+        object: this,
+      );
+    }
+  }
 
-  T _state;
+  T? _state;
 
   /// Provides safe access to the build context.
   ///
   /// If [dispose] has been called, will return null.
   ///
   /// Otherwise, asserts the [_state] is still mounted and returns its context.
-  BuildContext get context {
+  BuildContext? get context {
     assert(_debugValidate());
-    if (_state == null) {
-      return null;
-    }
-    return _state.context;
+    return _state?.context;
   }
 
   /// Called from asserts or tests to determine whether this object is in a
@@ -55,7 +61,7 @@ class DisposableBuildContext<T extends State> {
   /// but the state this is tracking is unmounted.
   bool _debugValidate() {
     assert(
-      _state == null || _state.mounted,
+      _state == null || _state!.mounted,
       'A DisposableBuildContext tried to access the BuildContext of a disposed '
       'State object. This can happen when the creator of this '
       'DisposableBuildContext fails to call dispose when it is disposed.',
@@ -69,6 +75,11 @@ class DisposableBuildContext<T extends State> {
   /// Creators of this object must call [dispose] when their [Element] is
   /// unmounted, i.e. when [State.dispose] is called.
   void dispose() {
+    // TODO(polina-c): stop duplicating code across disposables
+    // https://github.com/flutter/flutter/issues/137435
+    if (kFlutterMemoryAllocationsEnabled) {
+      FlutterMemoryAllocations.instance.dispatchObjectDisposed(object: this);
+    }
     _state = null;
   }
 }

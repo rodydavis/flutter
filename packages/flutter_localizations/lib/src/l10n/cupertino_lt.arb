@@ -30,5 +30,12 @@
   "pasteButtonLabel": "Įklijuoti",
   "selectAllButtonLabel": "Pasirinkti viską",
   "tabSemanticsLabel": "$tabIndex skirtukas iš $tabCount",
-  "modalBarrierDismissLabel": "Atsisakyti"
+  "modalBarrierDismissLabel": "Atsisakyti",
+  "searchTextFieldPlaceholderLabel": "Paieška",
+  "noSpellCheckReplacementsLabel": "Nerasta jokių pakeitimų",
+  "menuDismissLabel": "Atsisakyti meniu",
+  "lookUpButtonLabel": "Ieškoti",
+  "searchWebButtonLabel": "Ieškoti žiniatinklyje",
+  "shareButtonLabel": "Bendrinti...",
+  "clearButtonLabel": "Išvalyti"
 }

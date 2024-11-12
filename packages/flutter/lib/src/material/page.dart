@@ -2,10 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'package:flutter/cupertino.dart';
-import 'package:flutter/widgets.dart';
 
 import 'page_transitions_theme.dart';
 import 'theme.dart';
@@ -23,6 +20,9 @@ import 'theme.dart';
 /// fullscreen modal dialog. On iOS, those routes animate from the bottom to the
 /// top rather than horizontally.
 ///
+/// If `barrierDismissible` is true, then pressing the escape key on the keyboard
+/// will cause the current route to be popped with null as the value.
+///
 /// The type `T` specifies the return type of the route which can be supplied as
 /// the route is popped from the stack via [Navigator.pop] by providing the
 /// optional `result` argument.
@@ -34,22 +34,23 @@ import 'theme.dart';
 ///  * [MaterialPage], which is a [Page] of this class.
 class MaterialPageRoute<T> extends PageRoute<T> with MaterialRouteTransitionMixin<T> {
   /// Construct a MaterialPageRoute whose contents are defined by [builder].
-  ///
-  /// The values of [builder], [maintainState], and [PageRoute.fullscreenDialog]
-  /// must not be null.
   MaterialPageRoute({
-    @required this.builder,
-    RouteSettings settings,
+    required this.builder,
+    super.settings,
+    super.requestFocus,
     this.maintainState = true,
-    bool fullscreenDialog = false,
-  }) : assert(builder != null),
-       assert(maintainState != null),
-       assert(fullscreenDialog != null),
-       assert(opaque),
-       super(settings: settings, fullscreenDialog: fullscreenDialog);
+    super.fullscreenDialog,
+    super.allowSnapshotting = true,
+    super.barrierDismissible = false,
+  }) {
+    assert(opaque);
+  }
+
+  /// Builds the primary contents of the route.
+  final WidgetBuilder builder;
 
   @override
-  final WidgetBuilder builder;
+  Widget buildContent(BuildContext context) => builder(context);
 
   @override
   final bool maintainState;
@@ -62,37 +63,65 @@ class MaterialPageRoute<T> extends PageRoute<T> with MaterialRouteTransitionMixi
 /// A mixin that provides platform-adaptive transitions for a [PageRoute].
 ///
 /// {@template flutter.material.materialRouteTransitionMixin}
-/// For Android, the entrance transition for the page slides the route upwards
-/// and fades it in. The exit transition is the same, but in reverse.
+/// For Android, the entrance transition for the page zooms in and fades in
+/// while the exiting page zooms out and fades out. The exit transition is similar,
+/// but in reverse.
 ///
-/// The transition is adaptive to the platform and on iOS, the route slides in
-/// from the right and exits in reverse. The route also shifts to the left in
-/// parallax when another page enters to cover it. (These directions are flipped
-/// in environments with a right-to-left reading direction.)
+/// For iOS, the page slides in from the right and exits in reverse. The page
+/// also shifts to the left in parallax when another page enters to cover it.
+/// (These directions are flipped in environments with a right-to-left reading
+/// direction.)
 /// {@endtemplate}
 ///
 /// See also:
 ///
 ///  * [PageTransitionsTheme], which defines the default page transitions used
 ///    by the [MaterialRouteTransitionMixin.buildTransitions].
+///  * [ZoomPageTransitionsBuilder], which is the default page transition used
+///    by the [PageTransitionsTheme].
+///  * [CupertinoPageTransitionsBuilder], which is the default page transition
+///    for iOS and macOS.
 mixin MaterialRouteTransitionMixin<T> on PageRoute<T> {
   /// Builds the primary contents of the route.
-  WidgetBuilder get builder;
+  @protected
+  Widget buildContent(BuildContext context);
 
   @override
   Duration get transitionDuration => const Duration(milliseconds: 300);
 
   @override
-  Color get barrierColor => null;
+  Color? get barrierColor => null;
 
   @override
-  String get barrierLabel => null;
+  String? get barrierLabel => null;
+
+  @override
+  DelegatedTransitionBuilder? get delegatedTransition => _delegatedTransition;
+
+  static Widget? _delegatedTransition(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, bool allowSnapshotting, Widget? child) {
+    final PageTransitionsTheme theme = Theme.of(context).pageTransitionsTheme;
+    final TargetPlatform platform = Theme.of(context).platform;
+    final DelegatedTransitionBuilder? themeDelegatedTransition = theme.delegatedTransition(platform);
+    return themeDelegatedTransition != null ? themeDelegatedTransition(context, animation, secondaryAnimation, allowSnapshotting, child) : null;
+  }
 
   @override
   bool canTransitionTo(TransitionRoute<dynamic> nextRoute) {
+    // Don't perform outgoing animation if the next route is a fullscreen dialog,
+    // or there is no matching transition to use.
     // Don't perform outgoing animation if the next route is a fullscreen dialog.
-    return (nextRoute is MaterialRouteTransitionMixin && !nextRoute.fullscreenDialog)
-      || (nextRoute is CupertinoRouteTransitionMixin && !nextRoute.fullscreenDialog);
+    final bool nextRouteIsNotFullscreen = (nextRoute is! PageRoute<T>) || !nextRoute.fullscreenDialog;
+
+    // If the next route has a delegated transition, then this route is able to
+    // use that delegated transition to smoothly sync with the next route's
+    // transition.
+    final bool nextRouteHasDelegatedTransition = nextRoute is ModalRoute<T>
+      && nextRoute.delegatedTransition != null;
+
+    // Otherwise if the next route has the same route transition mixin as this
+    // one, then this route will already be synced with its transition.
+    return nextRouteIsNotFullscreen &&
+      ((nextRoute is MaterialRouteTransitionMixin) || nextRouteHasDelegatedTransition);
   }
 
   @override
@@ -101,16 +130,7 @@ mixin MaterialRouteTransitionMixin<T> on PageRoute<T> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
-    final Widget result = builder(context);
-    assert(() {
-      if (result == null) {
-        throw FlutterError(
-          'The builder for route "${settings.name}" returned null.\n'
-          'Route builders must never return null.'
-        );
-      }
-      return true;
-    }());
+    final Widget result = buildContent(context);
     return Semantics(
       scopesRoute: true,
       explicitChildNodes: true,
@@ -148,29 +168,33 @@ mixin MaterialRouteTransitionMixin<T> on PageRoute<T> {
 class MaterialPage<T> extends Page<T> {
   /// Creates a material page.
   const MaterialPage({
-    @required this.builder,
+    required this.child,
     this.maintainState = true,
     this.fullscreenDialog = false,
-    LocalKey key,
-    String name,
-    Object arguments,
-  }) : assert(builder != null),
-       assert(maintainState != null),
-       assert(fullscreenDialog != null),
-       super(key: key, name: name, arguments: arguments);
+    this.allowSnapshotting = true,
+    super.key,
+    super.canPop,
+    super.onPopInvoked,
+    super.name,
+    super.arguments,
+    super.restorationId,
+  });
 
-  /// Builds the primary contents of the route.
-  final WidgetBuilder builder;
+  /// The content to be shown in the [Route] created by this page.
+  final Widget child;
 
-  /// {@macro flutter.widgets.modalRoute.maintainState}
+  /// {@macro flutter.widgets.ModalRoute.maintainState}
   final bool maintainState;
 
-  /// {@macro flutter.widgets.pageRoute.fullscreenDialog}
+  /// {@macro flutter.widgets.PageRoute.fullscreenDialog}
   final bool fullscreenDialog;
+
+  /// {@macro flutter.widgets.TransitionRoute.allowSnapshotting}
+  final bool allowSnapshotting;
 
   @override
   Route<T> createRoute(BuildContext context) {
-    return _PageBasedMaterialPageRoute<T>(page: this);
+    return _PageBasedMaterialPageRoute<T>(page: this, allowSnapshotting: allowSnapshotting);
   }
 }
 
@@ -180,15 +204,18 @@ class MaterialPage<T> extends Page<T> {
 // the content is up to date after page updates.
 class _PageBasedMaterialPageRoute<T> extends PageRoute<T> with MaterialRouteTransitionMixin<T> {
   _PageBasedMaterialPageRoute({
-    @required MaterialPage<T> page,
-  }) : assert(page != null),
-       assert(opaque),
-       super(settings: page);
+    required MaterialPage<T> page,
+    super.allowSnapshotting,
+  }) : super(settings: page) {
+    assert(opaque);
+  }
 
   MaterialPage<T> get _page => settings as MaterialPage<T>;
 
   @override
-  WidgetBuilder get builder => _page.builder;
+  Widget buildContent(BuildContext context) {
+    return _page.child;
+  }
 
   @override
   bool get maintainState => _page.maintainState;

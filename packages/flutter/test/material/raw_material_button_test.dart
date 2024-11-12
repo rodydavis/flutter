@@ -2,16 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/src/services/keyboard_key.dart';
+import 'package:flutter/src/services/keyboard_key.g.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../rendering/mock_canvas.dart';
 import '../widgets/semantics_tester.dart';
 
 void main() {
@@ -19,13 +15,16 @@ void main() {
     bool pressed = false;
     const Color splashColor = Color(0xff00ff00);
     await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: Center(
-          child: RawMaterialButton(
-            splashColor: splashColor,
-            onPressed: () { pressed = true; },
-            child: const Text('BUTTON'),
+      Theme(
+        data: ThemeData(useMaterial3: false),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: RawMaterialButton(
+              splashColor: splashColor,
+              onPressed: () { pressed = true; },
+              child: const Text('BUTTON'),
+            ),
           ),
         ),
       ),
@@ -47,19 +46,22 @@ void main() {
     final FocusNode focusNode = FocusNode(debugLabel: 'Test Button');
     const Color splashColor = Color(0xff00ff00);
     await tester.pumpWidget(
-      Shortcuts(
-        shortcuts: <LogicalKeySet, Intent>{
-          LogicalKeySet(LogicalKeyboardKey.enter): const ActivateIntent(),
-          LogicalKeySet(LogicalKeyboardKey.space): const ActivateIntent(),
-        },
-        child: Directionality(
-          textDirection: TextDirection.ltr,
-          child: Center(
-            child: RawMaterialButton(
-              splashColor: splashColor,
-              focusNode: focusNode,
-              onPressed: () { pressed = true; },
-              child: const Text('BUTTON'),
+      Theme(
+        data: ThemeData(useMaterial3: false),
+        child: Shortcuts(
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+            SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+          },
+          child: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: RawMaterialButton(
+                splashColor: splashColor,
+                focusNode: focusNode,
+                onPressed: () { pressed = true; },
+                child: const Text('BUTTON'),
+              ),
             ),
           ),
         ),
@@ -104,6 +106,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(pressed, isTrue);
+    focusNode.dispose();
   });
 
   testWidgets('materialTapTargetSize.padded expands hit test area', (WidgetTester tester) async {
@@ -157,6 +160,7 @@ void main() {
             ],
             actions: <SemanticsAction>[
               SemanticsAction.tap,
+              SemanticsAction.focus,
             ],
             label: '+',
             textDirection: TextDirection.ltr,
@@ -177,16 +181,19 @@ void main() {
     const Color fillColor = Color(0xFFEF5350);
 
     await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: Center(
-          child: RawMaterialButton(
-            materialTapTargetSize: MaterialTapTargetSize.padded,
-            onPressed: () { },
-            fillColor: fillColor,
-            highlightColor: highlightColor,
-            splashColor: splashColor,
-            child: const SizedBox(),
+      Theme(
+        data: ThemeData(useMaterial3: false),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: RawMaterialButton(
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+              onPressed: () { },
+              fillColor: fillColor,
+              highlightColor: highlightColor,
+              splashColor: splashColor,
+              child: const SizedBox(),
+            ),
           ),
         ),
       ),
@@ -209,16 +216,19 @@ void main() {
     const Color fillColor = Color(0xFFEF5350);
 
     await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: Center(
-          child: RawMaterialButton(
-            materialTapTargetSize: MaterialTapTargetSize.padded,
-            onPressed: () { },
-            fillColor: fillColor,
-            highlightColor: highlightColor,
-            splashColor: splashColor,
-            child: const SizedBox(),
+      Theme(
+        data: ThemeData(useMaterial3: false),
+        child: Directionality(
+          textDirection: TextDirection.ltr,
+          child: Center(
+            child: RawMaterialButton(
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+              onPressed: () { },
+              fillColor: fillColor,
+              highlightColor: highlightColor,
+              splashColor: splashColor,
+              child: const SizedBox(),
+            ),
           ),
         ),
       ),
@@ -229,7 +239,7 @@ void main() {
     await tester.pump(); // start gesture
     await tester.pump(const Duration(milliseconds: 200)); // wait for splash to be well under way
     final RenderBox box = Material.of(tester.element(find.byType(InkWell))) as RenderBox;
-    // paints above above material
+    // paints above material
     expect(box, paints..circle(x: 44.0, y: 0.0, color: splashColor));
     await gesture.up();
   });
@@ -238,27 +248,27 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
             RawMaterialButton(
-            materialTapTargetSize: MaterialTapTargetSize.padded,
-            onPressed: () { },
-            child: Container(
-              width: 400.0,
-              height: 400.0,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: const <Widget>[
-                  SizedBox(
-                    height: 50.0,
-                    width: 400.0,
-                    child: Text('Material'),
-                  ),
-                ],
+              materialTapTargetSize: MaterialTapTargetSize.padded,
+              onPressed: () { },
+              child: const SizedBox(
+                width: 400.0,
+                height: 400.0,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: <Widget>[
+                    SizedBox(
+                      height: 50.0,
+                      width: 400.0,
+                      child: Text('Material'),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
     expect(find.text('Material').hitTestable(), findsOneWidget);
@@ -282,7 +292,8 @@ void main() {
                 ),
               ),
             ),
-        ]),
+          ],
+        ),
       ),
     );
     expect(find.byKey(key).hitTestable(), findsOneWidget);
@@ -334,6 +345,7 @@ void main() {
     await tester.pumpAndSettle(const Duration(seconds: 1));
 
     expect(box, paints..rect(color: focusColor));
+    focusNode.dispose();
   });
 
   testWidgets('RawMaterialButton loses focus when disabled.', (WidgetTester tester) async {
@@ -368,30 +380,33 @@ void main() {
 
     await tester.pump();
     expect(focusNode.hasPrimaryFocus, isFalse);
+    focusNode.dispose();
   });
 
-  testWidgets("Disabled RawMaterialButton can't be traversed to when disabled.", (WidgetTester tester) async {
+  testWidgets("Disabled RawMaterialButton can't be traversed to.", (WidgetTester tester) async {
     final FocusNode focusNode1 = FocusNode(debugLabel: '$RawMaterialButton 1');
     final FocusNode focusNode2 = FocusNode(debugLabel: '$RawMaterialButton 2');
 
     await tester.pumpWidget(
       MaterialApp(
-        home: Center(
-          child: Column(
-            children: <Widget>[
-              RawMaterialButton(
-                autofocus: true,
-                focusNode: focusNode1,
-                onPressed: () {},
-                child: Container(width: 100, height: 100, color: const Color(0xffff0000)),
-              ),
-              RawMaterialButton(
-                autofocus: true,
-                focusNode: focusNode2,
-                onPressed: null,
-                child: Container(width: 100, height: 100, color: const Color(0xffff0000)),
-              ),
-            ],
+        home: FocusScope(
+          child: Center(
+            child: Column(
+              children: <Widget>[
+                RawMaterialButton(
+                  autofocus: true,
+                  focusNode: focusNode1,
+                  onPressed: () {},
+                  child: Container(width: 100, height: 100, color: const Color(0xffff0000)),
+                ),
+                RawMaterialButton(
+                  autofocus: true,
+                  focusNode: focusNode2,
+                  onPressed: null,
+                  child: Container(width: 100, height: 100, color: const Color(0xffff0000)),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -401,11 +416,14 @@ void main() {
     expect(focusNode1.hasPrimaryFocus, isTrue);
     expect(focusNode2.hasPrimaryFocus, isFalse);
 
-    expect(focusNode1.nextFocus(), isTrue);
+    expect(focusNode1.nextFocus(), isFalse);
     await tester.pump();
 
     expect(focusNode1.hasPrimaryFocus, isTrue);
     expect(focusNode2.hasPrimaryFocus, isFalse);
+
+    focusNode1.dispose();
+    focusNode2.dispose();
   });
 
   testWidgets('RawMaterialButton handles hover', (WidgetTester tester) async {
@@ -429,7 +447,6 @@ void main() {
     final RenderBox box = Material.of(tester.element(find.byType(InkWell))) as RenderBox;
     final TestGesture gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await gesture.addPointer();
-    addTearDown(gesture.removePointer);
     expect(box, isNot(paints..rect(color: hoverColor)));
 
     await gesture.moveTo(tester.getCenter(find.byType(RawMaterialButton)));
@@ -443,13 +460,13 @@ void main() {
     bool wasPressed;
     Finder rawMaterialButton;
 
-    Widget buildFrame({ VoidCallback onPressed, VoidCallback onLongPress }) {
+    Widget buildFrame({ VoidCallback? onPressed, VoidCallback? onLongPress }) {
       return Directionality(
         textDirection: TextDirection.ltr,
         child: RawMaterialButton(
-          child: const Text('button'),
           onPressed: onPressed,
           onLongPress: onLongPress,
+          child: const Text('button'),
         ),
       );
     }
@@ -457,7 +474,7 @@ void main() {
     // onPressed not null, onLongPress null.
     wasPressed = false;
     await tester.pumpWidget(
-      buildFrame(onPressed: () { wasPressed = true; }, onLongPress: null),
+      buildFrame(onPressed: () { wasPressed = true; }),
     );
     rawMaterialButton = find.byType(RawMaterialButton);
     expect(tester.widget<RawMaterialButton>(rawMaterialButton).enabled, true);
@@ -467,7 +484,7 @@ void main() {
     // onPressed null, onLongPress not null.
     wasPressed = false;
     await tester.pumpWidget(
-      buildFrame(onPressed: null, onLongPress: () { wasPressed = true; }),
+      buildFrame(onLongPress: () { wasPressed = true; }),
     );
     rawMaterialButton = find.byType(RawMaterialButton);
     expect(tester.widget<RawMaterialButton>(rawMaterialButton).enabled, true);
@@ -476,7 +493,7 @@ void main() {
 
     // onPressed null, onLongPress null.
     await tester.pumpWidget(
-      buildFrame(onPressed: null, onLongPress: null),
+      buildFrame(),
     );
     rawMaterialButton = find.byType(RawMaterialButton);
     expect(tester.widget<RawMaterialButton>(rawMaterialButton).enabled, false);
@@ -518,8 +535,9 @@ void main() {
     const Key childKey = Key('test child');
 
     Future<void> buildTest(VisualDensity visualDensity, {bool useText = false}) async {
-      return await tester.pumpWidget(
+      return tester.pumpWidget(
         MaterialApp(
+          theme: ThemeData(useMaterial3: false),
           home: Directionality(
             textDirection: TextDirection.rtl,
             child: Center(
@@ -535,7 +553,7 @@ void main() {
       );
     }
 
-    await buildTest(const VisualDensity());
+    await buildTest(VisualDensity.standard);
     final RenderBox box = tester.renderObject(find.byKey(key));
     Rect childRect = tester.getRect(find.byKey(childKey));
     await tester.pumpAndSettle();
@@ -554,7 +572,7 @@ void main() {
     expect(box.size, equals(const Size(100, 100)));
     expect(childRect, equals(const Rect.fromLTRB(350, 250, 450, 350)));
 
-    await buildTest(const VisualDensity(), useText: true);
+    await buildTest(VisualDensity.standard, useText: true);
     await tester.pumpAndSettle();
     childRect = tester.getRect(find.byKey(childKey));
     expect(box.size, equals(const Size(88, 48)));
@@ -589,7 +607,6 @@ void main() {
 
     final TestGesture gesture = await tester.createGesture(kind: PointerDeviceKind.mouse, pointer: 1);
     await gesture.addPointer(location: Offset.zero);
-    addTearDown(gesture.removePointer);
 
     await tester.pump();
 

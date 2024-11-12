@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:async';
-
 import 'package:flutter_tools/src/base/utils.dart';
 
 import '../src/common.dart';
@@ -37,6 +35,28 @@ void main() {
       expect(removedItems.length, 2);
       expect(removedItems.first, 'aaa');
       expect(removedItems[1], 'bbb');
+    });
+
+    test('becomes populated when item is added', () async {
+      final ItemListNotifier<String> list = ItemListNotifier<String>();
+      expect(list.isPopulated, false);
+      expect(list.items, isEmpty);
+
+      // Becomes populated when a new list is added.
+      list.updateWithNewList(<String>['a']);
+      expect(list.isPopulated, true);
+      expect(list.items, <String>['a']);
+
+      // Remain populated even when the last item is removed.
+      list.removeItem('a');
+      expect(list.isPopulated, true);
+      expect(list.items, isEmpty);
+    });
+
+    test('is populated by default if initialized with list of items', () async {
+      final ItemListNotifier<String> list = ItemListNotifier<String>.from(<String>['a']);
+      expect(list.isPopulated, true);
+      expect(list.items, <String>['a']);
     });
   });
 }

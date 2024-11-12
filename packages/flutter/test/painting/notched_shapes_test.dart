@@ -2,12 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'dart:math' as math;
 
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/painting.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('CircularNotchedRectangle', () {
@@ -43,6 +41,26 @@ void main() {
       const CircularNotchedRectangle shape = CircularNotchedRectangle();
       const Rect host = Rect.fromLTRB(0.0, 100.0, 300.0, 300.0);
       const Rect guest = Rect.fromLTRB(190.0, 95.0, 210.0, 115.0);
+
+      final Path actualPath = shape.getOuterPath(host, guest);
+
+      expect(pathDoesNotContainCircle(actualPath, guest), isTrue);
+    });
+
+    test('inverted guest center above host', () {
+      const CircularNotchedRectangle shape = CircularNotchedRectangle(inverted: true);
+      const Rect host = Rect.fromLTRB(0.0, 100.0, 300.0, 300.0);
+      const Rect guest = Rect.fromLTRB(190.0, 285.0, 210.0, 305.0);
+
+      final Path actualPath = shape.getOuterPath(host, guest);
+
+      expect(pathDoesNotContainCircle(actualPath, guest), isTrue);
+    });
+
+    test('inverted guest center below host', () {
+      const CircularNotchedRectangle shape = CircularNotchedRectangle(inverted: true);
+      const Rect host = Rect.fromLTRB(0.0, 100.0, 300.0, 300.0);
+      const Rect guest = Rect.fromLTRB(190.0, 295.0, 210.0, 315.0);
 
       final Path actualPath = shape.getOuterPath(host, guest);
 
@@ -117,8 +135,9 @@ bool pathDoesNotContainCircle(Path path, Rect circleBounds) {
     for (double i = 0.0; i < 1; i += 0.01) {
       final double x = i * radius * math.cos(theta);
       final double y = i * radius * math.sin(theta);
-      if (path.contains(Offset(x,y) + circleBounds.center))
+      if (path.contains(Offset(x,y) + circleBounds.center)) {
         return false;
+      }
     }
   }
   return true;

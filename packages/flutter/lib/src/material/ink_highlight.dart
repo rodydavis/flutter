@@ -2,9 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
+/// @docImport 'ink_decoration.dart';
+/// @docImport 'ink_splash.dart';
+/// @docImport 'ink_well.dart';
+library;
 
-import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'ink_well.dart' show InteractiveInkFeature;
@@ -40,28 +42,23 @@ class InkHighlight extends InteractiveInkFeature {
   ///
   /// When the highlight is removed, `onRemoved` will be called.
   InkHighlight({
-    @required MaterialInkController controller,
-    @required RenderBox referenceBox,
-    @required Color color,
-    @required TextDirection textDirection,
+    required super.controller,
+    required super.referenceBox,
+    required super.color,
+    required TextDirection textDirection,
     BoxShape shape = BoxShape.rectangle,
-    double radius,
-    BorderRadius borderRadius,
-    ShapeBorder customBorder,
-    RectCallback rectCallback,
-    VoidCallback onRemoved,
+    double? radius,
+    BorderRadius? borderRadius,
+    super.customBorder,
+    RectCallback? rectCallback,
+    super.onRemoved,
     Duration fadeDuration = _kDefaultHighlightFadeDuration,
-  }) : assert(color != null),
-       assert(shape != null),
-       assert(textDirection != null),
-       assert(fadeDuration != null),
-       _shape = shape,
+  }) : _shape = shape,
        _radius = radius,
        _borderRadius = borderRadius ?? BorderRadius.zero,
-       _customBorder = customBorder,
+
        _textDirection = textDirection,
-       _rectCallback = rectCallback,
-       super(controller: controller, referenceBox: referenceBox, color: color, onRemoved: onRemoved) {
+       _rectCallback = rectCallback {
     _alphaController = AnimationController(duration: fadeDuration, vsync: controller.vsync)
       ..addListener(controller.markNeedsPaint)
       ..addStatusListener(_handleAlphaStatusChanged)
@@ -75,14 +72,13 @@ class InkHighlight extends InteractiveInkFeature {
   }
 
   final BoxShape _shape;
-  final double _radius;
+  final double? _radius;
   final BorderRadius _borderRadius;
-  final ShapeBorder _customBorder;
-  final RectCallback _rectCallback;
+  final RectCallback? _rectCallback;
   final TextDirection _textDirection;
 
-  Animation<int> _alpha;
-  AnimationController _alphaController;
+  late Animation<int> _alpha;
+  late AnimationController _alphaController;
 
   /// Whether this part of the material is being visually emphasized.
   bool get active => _active;
@@ -101,8 +97,9 @@ class InkHighlight extends InteractiveInkFeature {
   }
 
   void _handleAlphaStatusChanged(AnimationStatus status) {
-    if (status == AnimationStatus.dismissed && !_active)
+    if (status.isDismissed && !_active) {
       dispose();
+    }
   }
 
   @override
@@ -112,15 +109,13 @@ class InkHighlight extends InteractiveInkFeature {
   }
 
   void _paintHighlight(Canvas canvas, Rect rect, Paint paint) {
-    assert(_shape != null);
     canvas.save();
-    if (_customBorder != null) {
-      canvas.clipPath(_customBorder.getOuterPath(rect, textDirection: _textDirection));
+    if (customBorder != null) {
+      canvas.clipPath(customBorder!.getOuterPath(rect, textDirection: _textDirection));
     }
     switch (_shape) {
       case BoxShape.circle:
         canvas.drawCircle(rect.center, _radius ?? Material.defaultSplashRadius, paint);
-        break;
       case BoxShape.rectangle:
         if (_borderRadius != BorderRadius.zero) {
           final RRect clipRRect = RRect.fromRectAndCorners(
@@ -132,7 +127,6 @@ class InkHighlight extends InteractiveInkFeature {
         } else {
           canvas.drawRect(rect, paint);
         }
-        break;
     }
     canvas.restore();
   }
@@ -140,7 +134,7 @@ class InkHighlight extends InteractiveInkFeature {
   @override
   void paintFeature(Canvas canvas, Matrix4 transform) {
     final Paint paint = Paint()..color = color.withAlpha(_alpha.value);
-    final Offset originOffset = MatrixUtils.getAsTranslation(transform);
+    final Offset? originOffset = MatrixUtils.getAsTranslation(transform);
     final Rect rect = _rectCallback != null ? _rectCallback() : Offset.zero & referenceBox.size;
     if (originOffset == null) {
       canvas.save();

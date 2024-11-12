@@ -2,7 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
+/// @docImport 'bottom_app_bar.dart';
+/// @docImport 'material.dart';
+library;
 
 import 'dart:ui' show lerpDouble;
 
@@ -34,30 +36,56 @@ class BottomAppBarTheme with Diagnosticable {
     this.color,
     this.elevation,
     this.shape,
+    this.height,
+    this.surfaceTintColor,
+    this.shadowColor,
+    this.padding,
   });
 
-  /// Default value for [BottomAppBar.color].
+  /// Overrides the default value for [BottomAppBar.color].
+  final Color? color;
+
+  /// Overrides the default value for [BottomAppBar.elevation].
+  final double? elevation;
+
+  /// Overrides the default value for [BottomAppBar.shape].
+  final NotchedShape? shape;
+
+  /// Overrides the default value for [BottomAppBar.height].
+  final double? height;
+
+  /// Overrides the default value for [BottomAppBar.surfaceTintColor].
   ///
-  /// If null, [BottomAppBar] uses [ThemeData.bottomAppBarColor].
-  final Color color;
+  /// If null, [BottomAppBar] will not display an overlay color.
+  ///
+  /// See [Material.surfaceTintColor] for more details.
+  final Color? surfaceTintColor;
 
-  /// Default value for [BottomAppBar.elevation].
-  final double elevation;
+  /// Overrides the default value for [BottomAppBar.shadowColor].
+  final Color? shadowColor;
 
-  /// Default value for [BottomAppBar.shape].
-  final NotchedShape shape;
+  /// Overrides the default value for [BottomAppBar.padding].
+  final EdgeInsetsGeometry? padding;
 
   /// Creates a copy of this object but with the given fields replaced with the
   /// new values.
   BottomAppBarTheme copyWith({
-    Color color,
-    double elevation,
-    NotchedShape shape,
+    Color? color,
+    double? elevation,
+    NotchedShape? shape,
+    double? height,
+    Color? surfaceTintColor,
+    Color? shadowColor,
+    EdgeInsetsGeometry? padding,
   }) {
     return BottomAppBarTheme(
       color: color ?? this.color,
       elevation: elevation ?? this.elevation,
       shape: shape ?? this.shape,
+      height: height ?? this.height,
+      surfaceTintColor: surfaceTintColor ?? this.surfaceTintColor,
+      shadowColor: shadowColor ?? this.shadowColor,
+      padding: padding ?? this.padding,
     );
   }
 
@@ -68,37 +96,49 @@ class BottomAppBarTheme with Diagnosticable {
 
   /// Linearly interpolate between two BAB themes.
   ///
-  /// The argument `t` must not be null.
-  ///
   /// {@macro dart.ui.shadow.lerp}
-  static BottomAppBarTheme lerp(BottomAppBarTheme a, BottomAppBarTheme b, double t) {
-    assert(t != null);
+  static BottomAppBarTheme lerp(BottomAppBarTheme? a, BottomAppBarTheme? b, double t) {
+    if (identical(a, b) && a != null) {
+      return a;
+    }
     return BottomAppBarTheme(
       color: Color.lerp(a?.color, b?.color, t),
       elevation: lerpDouble(a?.elevation, b?.elevation, t),
       shape: t < 0.5 ? a?.shape : b?.shape,
+      height: lerpDouble(a?.height, b?.height, t),
+      surfaceTintColor: Color.lerp(a?.surfaceTintColor, b?.surfaceTintColor, t),
+      shadowColor: Color.lerp(a?.shadowColor, b?.shadowColor, t),
+      padding: EdgeInsetsGeometry.lerp(a?.padding, b?.padding, t),
     );
   }
 
   @override
-  int get hashCode {
-    return hashValues(
-      color,
-      elevation,
-      shape,
-    );
-  }
+  int get hashCode => Object.hash(
+    color,
+    elevation,
+    shape,
+    height,
+    surfaceTintColor,
+    shadowColor,
+    padding,
+  );
 
   @override
   bool operator ==(Object other) {
-    if (identical(this, other))
+    if (identical(this, other)) {
       return true;
-    if (other.runtimeType != runtimeType)
+    }
+    if (other.runtimeType != runtimeType) {
       return false;
+    }
     return other is BottomAppBarTheme
         && other.color == color
         && other.elevation == elevation
-        && other.shape == shape;
+        && other.shape == shape
+        && other.height == height
+        && other.surfaceTintColor == surfaceTintColor
+        && other.shadowColor == shadowColor
+        && other.padding == padding;
   }
 
   @override
@@ -107,5 +147,9 @@ class BottomAppBarTheme with Diagnosticable {
     properties.add(ColorProperty('color', color, defaultValue: null));
     properties.add(DiagnosticsProperty<double>('elevation', elevation, defaultValue: null));
     properties.add(DiagnosticsProperty<NotchedShape>('shape', shape, defaultValue: null));
+    properties.add(DiagnosticsProperty<double>('height', height, defaultValue: null));
+    properties.add(ColorProperty('surfaceTintColor', surfaceTintColor, defaultValue: null));
+    properties.add(ColorProperty('shadowColor', shadowColor, defaultValue: null));
+    properties.add(DiagnosticsProperty<EdgeInsetsGeometry>('padding', padding, defaultValue: null));
   }
 }

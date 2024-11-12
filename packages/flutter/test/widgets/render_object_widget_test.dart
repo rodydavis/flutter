@@ -2,13 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-
-import '../rendering/recording_canvas.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 final BoxDecoration kBoxDecorationA = BoxDecoration(border: nonconst(null));
 final BoxDecoration kBoxDecorationB = BoxDecoration(border: nonconst(null));
@@ -16,9 +12,9 @@ final BoxDecoration kBoxDecorationC = BoxDecoration(border: nonconst(null));
 
 class TestWidget extends StatelessWidget {
   const TestWidget({
-    Key key,
-    this.child,
-  }) : super(key: key);
+    super.key,
+    required this.child,
+  });
 
   final Widget child;
 
@@ -27,18 +23,13 @@ class TestWidget extends StatelessWidget {
 }
 
 class TestOrientedBox extends SingleChildRenderObjectWidget {
-  const TestOrientedBox({ Key key, Widget child }) : super(key: key, child: child);
+  const TestOrientedBox({ super.key, super.child });
 
   Decoration _getDecoration(BuildContext context) {
-    final Orientation orientation = MediaQuery.of(context).orientation;
-    switch (orientation) {
-      case Orientation.landscape:
-        return const BoxDecoration(color: Color(0xFF00FF00));
-      case Orientation.portrait:
-        return const BoxDecoration(color: Color(0xFF0000FF));
-    }
-    assert(orientation != null);
-    return null;
+    return switch (MediaQuery.orientationOf(context)) {
+      Orientation.landscape => const BoxDecoration(color: Color(0xFF00FF00)),
+      Orientation.portrait  => const BoxDecoration(color: Color(0xFF0000FF)),
+    };
   }
 
   @override
@@ -51,7 +42,7 @@ class TestOrientedBox extends SingleChildRenderObjectWidget {
 }
 
 class TestNonVisitingWidget extends SingleChildRenderObjectWidget {
-  const TestNonVisitingWidget({ Key key, Widget child }) : super(key: key, child: child);
+  const TestNonVisitingWidget({ super.key, required Widget super.child });
 
   @override
   RenderObject createRenderObject(BuildContext context) => TestNonVisitingRenderObject();
@@ -59,14 +50,19 @@ class TestNonVisitingWidget extends SingleChildRenderObjectWidget {
 
 class TestNonVisitingRenderObject extends RenderBox with RenderObjectWithChildMixin<RenderBox> {
   @override
+  Size computeDryLayout(BoxConstraints constraints) {
+    return child!.getDryLayout(constraints);
+  }
+
+  @override
   void performLayout() {
-    child.layout(constraints, parentUsesSize: true);
-    size = child.size;
+    child!.layout(constraints, parentUsesSize: true);
+    size = child!.size;
   }
 
   @override
   void paint(PaintingContext context, Offset offset) {
-    context.paintChild(child, offset);
+    context.paintChild(child!, offset);
   }
 
   @override
@@ -107,7 +103,7 @@ void main() {
       expect(renderObject.position, equals(DecorationPosition.background));
       expect(renderObject.child, isNotNull);
       expect(renderObject.child, isA<RenderDecoratedBox>());
-      final RenderDecoratedBox child = renderObject.child as RenderDecoratedBox;
+      final RenderDecoratedBox child = renderObject.child! as RenderDecoratedBox;
       expect(child.decoration, equals(kBoxDecorationB));
       expect(child.position, equals(DecorationPosition.background));
       expect(child.child, isNull);
@@ -127,7 +123,7 @@ void main() {
     await tester.pumpWidget(DecoratedBox(
       decoration: kBoxDecorationA,
       child: DecoratedBox(
-        decoration: kBoxDecorationB
+        decoration: kBoxDecorationB,
       ),
     ));
 
@@ -137,7 +133,7 @@ void main() {
       decoration: kBoxDecorationA,
       child: TestWidget(
         child: DecoratedBox(
-          decoration: kBoxDecorationB
+          decoration: kBoxDecorationB,
         ),
       ),
     ));
@@ -147,14 +143,14 @@ void main() {
     await tester.pumpWidget(DecoratedBox(
       decoration: kBoxDecorationA,
       child: DecoratedBox(
-        decoration: kBoxDecorationB
+        decoration: kBoxDecorationB,
       ),
     ));
 
     checkFullTree();
 
     await tester.pumpWidget(DecoratedBox(
-      decoration: kBoxDecorationA
+      decoration: kBoxDecorationA,
     ));
 
     childBareTree();
@@ -164,7 +160,7 @@ void main() {
       child: TestWidget(
         child: TestWidget(
           child: DecoratedBox(
-            decoration: kBoxDecorationB
+            decoration: kBoxDecorationB,
           ),
         ),
       ),
@@ -173,7 +169,7 @@ void main() {
     checkFullTree();
 
     await tester.pumpWidget(DecoratedBox(
-      decoration: kBoxDecorationA
+      decoration: kBoxDecorationA,
     ));
 
     childBareTree();
@@ -186,7 +182,7 @@ void main() {
       child: DecoratedBox(
         decoration: kBoxDecorationB,
         child: DecoratedBox(
-          decoration: kBoxDecorationC
+          decoration: kBoxDecorationC,
         ),
       ),
     ));
@@ -196,15 +192,15 @@ void main() {
     expect(element.renderObject, isA<RenderDecoratedBox>());
     final RenderDecoratedBox parent = element.renderObject as RenderDecoratedBox;
     expect(parent.child, isA<RenderDecoratedBox>());
-    final RenderDecoratedBox child = parent.child as RenderDecoratedBox;
+    final RenderDecoratedBox child = parent.child! as RenderDecoratedBox;
     expect(child.decoration, equals(kBoxDecorationB));
     expect(child.child, isA<RenderDecoratedBox>());
-    final RenderDecoratedBox grandChild = child.child as RenderDecoratedBox;
+    final RenderDecoratedBox grandChild = child.child! as RenderDecoratedBox;
     expect(grandChild.decoration, equals(kBoxDecorationC));
     expect(grandChild.child, isNull);
 
     await tester.pumpWidget(DecoratedBox(
-      decoration: kBoxDecorationA
+      decoration: kBoxDecorationA,
     ));
 
     element =

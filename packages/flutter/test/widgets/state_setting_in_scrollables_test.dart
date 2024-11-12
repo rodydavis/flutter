@@ -2,26 +2,30 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class Foo extends StatefulWidget {
-  const Foo({ Key key }) : super(key: key);
+  const Foo({ super.key });
   @override
   FooState createState() => FooState();
 }
 
 class FooState extends State<Foo> {
-  ScrollController scrollController = ScrollController();
+  final ScrollController scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    scrollController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         return ScrollConfiguration(
-          behavior: FooScrollBehavior(),
+          behavior: const FooScrollBehavior(),
           child: ListView(
             controller: scrollController,
             children: <Widget>[
@@ -70,12 +74,14 @@ class FooState extends State<Foo> {
             ],
           ),
         );
-      }
+      },
     );
   }
 }
 
 class FooScrollBehavior extends ScrollBehavior {
+  const FooScrollBehavior();
+
   @override
   bool shouldNotify(FooScrollBehavior old) => true;
 }

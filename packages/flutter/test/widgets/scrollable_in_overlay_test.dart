@@ -2,14 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'package:flutter/widgets.dart';
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Can dispose ScrollPosition when pixels is null', () {
+  test('Can dispose ScrollPosition when hasPixels is false', () {
     final ScrollPosition position = ScrollPositionWithSingleContext(
       initialPixels: null,
       keepScrollOffset: false,
@@ -17,13 +14,14 @@ void main() {
       context: ScrollableState(),
     );
 
-    expect(position.pixels, isNull);
+    expect(position.hasPixels, false);
     position.dispose(); // Should not throw/assert.
   });
 
   testWidgets('scrollable in hidden overlay does not crash when unhidden', (WidgetTester tester) async {
     // Regression test for https://github.com/flutter/flutter/issues/44269.
     final TabController controller = TabController(vsync: const TestVSync(), length: 1);
+    addTearDown(controller.dispose);
 
     final OverlayEntry entry1 = OverlayEntry(
       maintainState: true,
@@ -38,6 +36,8 @@ void main() {
         );
       },
     );
+    addTearDown(() {entry1.remove(); entry1.dispose();});
+
     final OverlayEntry entry2 = OverlayEntry(
       maintainState: true,
       opaque: true,
@@ -45,6 +45,7 @@ void main() {
         return const Text('number2');
       },
     );
+    addTearDown(() { entry2.dispose();});
 
     await tester.pumpWidget(
       MaterialApp(

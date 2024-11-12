@@ -3,39 +3,51 @@
 // found in the LICENSE file.
 
 import 'package:file/memory.dart';
+import 'package:flutter_tools/src/application_package.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/base/io.dart';
-import 'package:flutter_tools/src/base/platform.dart';
+import 'package:flutter_tools/src/base/logger.dart';
 import 'package:flutter_tools/src/build_info.dart';
+import 'package:flutter_tools/src/device.dart';
+import 'package:flutter_tools/src/flutter_manifest.dart';
+import 'package:flutter_tools/src/globals.dart' as globals;
+import 'package:flutter_tools/src/project.dart';
 import 'package:flutter_tools/src/test/flutter_platform.dart';
-import 'package:meta/meta.dart';
-import 'package:mockito/mockito.dart';
-import 'package:process/process.dart';
-import 'package:test_core/backend.dart'; // ignore: deprecated_member_use
+import 'package:test/fake.dart';
+import 'package:test_core/backend.dart';
 
 import '../src/common.dart';
 import '../src/context.dart';
 
 void main() {
-  FileSystem fileSystem;
+  late FileSystem fileSystem;
 
   setUp(() {
     fileSystem = MemoryFileSystem.test();
-    fileSystem.file('.packages').writeAsStringSync('\n');
+    fileSystem.file('.dart_tool/package_config.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync('{"configVersion":2,"packages":[]}');
   });
 
   group('FlutterPlatform', () {
-    testUsingContext('ensureConfiguration throws an error if an '
-      'explicitObservatoryPort is specified and more than one test file', () async {
-      final FlutterPlatform flutterPlatform = FlutterPlatform(
-        buildMode: BuildMode.debug,
-        shellPath: '/',
-        explicitObservatoryPort: 1234,
-        extraFrontEndOptions: <String>[],
-      );
-      flutterPlatform.loadChannel('test1.dart', MockSuitePlatform());
+    late SuitePlatform fakeSuitePlatform;
+    setUp(() {
+      fakeSuitePlatform = SuitePlatform(Runtime.vm);
+    });
 
-      expect(() => flutterPlatform.loadChannel('test2.dart', MockSuitePlatform()), throwsToolExit());
+    testUsingContext('ensureConfiguration throws an error if an '
+      'explicitVmServicePort is specified and more than one test file', () async {
+      final FlutterPlatform flutterPlatform = FlutterPlatform(
+        shellPath: '/',
+        debuggingOptions: DebuggingOptions.enabled(
+          BuildInfo.debug,
+          hostVmServicePort: 1234,
+        ),
+        enableVmService: false,
+      );
+      flutterPlatform.loadChannel('test1.dart', fakeSuitePlatform);
+
+      expect(() => flutterPlatform.loadChannel('test2.dart', fakeSuitePlatform), throwsToolExit());
     }, overrides: <Type, Generator>{
       FileSystem: () => fileSystem,
       ProcessManager: () => FakeProcessManager.any(),
@@ -44,174 +56,180 @@ void main() {
     testUsingContext('ensureConfiguration throws an error if a precompiled '
       'entrypoint is specified and more that one test file', () {
       final FlutterPlatform flutterPlatform = FlutterPlatform(
-        buildMode: BuildMode.debug,
+        debuggingOptions: DebuggingOptions.enabled(BuildInfo.debug),
         shellPath: '/',
         precompiledDillPath: 'example.dill',
-        extraFrontEndOptions: <String>[],
+        enableVmService: false,
       );
-      flutterPlatform.loadChannel('test1.dart', MockSuitePlatform());
+      flutterPlatform.loadChannel('test1.dart', fakeSuitePlatform);
 
-      expect(() => flutterPlatform.loadChannel('test2.dart', MockSuitePlatform()), throwsToolExit());
+      expect(() => flutterPlatform.loadChannel('test2.dart', fakeSuitePlatform), throwsToolExit());
     }, overrides: <Type, Generator>{
       FileSystem: () => fileSystem,
       ProcessManager: () => FakeProcessManager.any(),
     });
 
-    group('The FLUTTER_TEST environment variable is passed to the test process', () {
-      MockPlatform mockPlatform;
-      MockProcessManager mockProcessManager;
-      FlutterPlatform flutterPlatform;
-      final Map<Type, Generator> contextOverrides = <Type, Generator>{
-        Platform: () => mockPlatform,
-        ProcessManager: () => mockProcessManager,
-        FileSystem: () => fileSystem,
-      };
+    testUsingContext('an exception from the app not starting bubbles up to the test runner', () async {
+      final _UnstartableDevice testDevice = _UnstartableDevice();
+      final FlutterPlatform flutterPlatform = FlutterPlatform(
+        debuggingOptions: DebuggingOptions.enabled(BuildInfo.debug),
+        shellPath: '/',
+        enableVmService: false,
+        integrationTestDevice: testDevice,
+        flutterProject: _FakeFlutterProject(),
+        host: InternetAddress.anyIPv4,
+        updateGoldens: false,
+      );
 
-      setUp(() {
-        mockPlatform = MockPlatform();
-        when(mockPlatform.isWindows).thenReturn(false);
-        mockProcessManager = MockProcessManager();
-        flutterPlatform = TestFlutterPlatform();
-      });
-
-      Future<Map<String, String>> captureEnvironment() async {
-        flutterPlatform.loadChannel('test1.dart', MockSuitePlatform());
-        when(mockProcessManager.start(
-          any,
-          environment: anyNamed('environment')),
-        ).thenAnswer((_) {
-          return Future<Process>.value(MockProcess());
-        });
-        await untilCalled(mockProcessManager.start(any, environment: anyNamed('environment')));
-        final VerificationResult toVerify = verify(mockProcessManager.start(
-          any,
-          environment: captureAnyNamed('environment'),
-        ));
-        expect(toVerify.captured, hasLength(1));
-        expect(toVerify.captured.first, isA<Map<String, String>>());
-        return toVerify.captured.first as Map<String, String>;
-      }
-
-      testUsingContext('as true when not originally set', () async {
-        when(mockPlatform.environment).thenReturn(<String, String>{});
-        final Map<String, String> capturedEnvironment = await captureEnvironment();
-        expect(capturedEnvironment['FLUTTER_TEST'], 'true');
-      }, overrides: contextOverrides);
-
-      testUsingContext('as true when set to true', () async {
-        when(mockPlatform.environment).thenReturn(<String, String>{'FLUTTER_TEST': 'true'});
-        final Map<String, String> capturedEnvironment = await captureEnvironment();
-        expect(capturedEnvironment['FLUTTER_TEST'], 'true');
-      }, overrides: contextOverrides);
-
-      testUsingContext('as false when set to false', () async {
-        when(mockPlatform.environment).thenReturn(<String, String>{'FLUTTER_TEST': 'false'});
-        final Map<String, String> capturedEnvironment = await captureEnvironment();
-        expect(capturedEnvironment['FLUTTER_TEST'], 'false');
-      }, overrides: contextOverrides);
-
-      testUsingContext('unchanged when set', () async {
-        when(mockPlatform.environment).thenReturn(<String, String>{'FLUTTER_TEST': 'neither true nor false'});
-        final Map<String, String> capturedEnvironment = await captureEnvironment();
-        expect(capturedEnvironment['FLUTTER_TEST'], 'neither true nor false');
-      }, overrides: contextOverrides);
-
-      testUsingContext('as null when set to null', () async {
-        when(mockPlatform.environment).thenReturn(<String, String>{'FLUTTER_TEST': null});
-        final Map<String, String> capturedEnvironment = await captureEnvironment();
-        expect(capturedEnvironment['FLUTTER_TEST'], null);
-      }, overrides: contextOverrides);
+      await expectLater(
+        () => flutterPlatform.loadChannel('test1.dart', fakeSuitePlatform).stream.drain<void>(),
+        // we intercept the actual exception and throw a string for the test runner to catch
+        throwsA(isA<String>().having(
+          (String msg) => msg,
+          'string',
+          'Unable to start the app on the device.',
+        )),
+      );
+      expect((globals.logger as BufferLogger).traceText, contains('test 0: error caught during test;'));
+    }, overrides: <Type, Generator>{
+      FileSystem: () => fileSystem,
+      ProcessManager: () => FakeProcessManager.any(),
+      ApplicationPackageFactory: () => _FakeApplicationPackageFactory(),
     });
 
     testUsingContext('installHook creates a FlutterPlatform', () {
       expect(() => installHook(
-        buildMode: BuildMode.debug,
         shellPath: 'abc',
-        enableObservatory: false,
-        startPaused: true,
-        extraFrontEndOptions: <String>[],
+        debuggingOptions: DebuggingOptions.enabled(
+          BuildInfo.debug,
+          startPaused: true,
+        ),
       ), throwsAssertionError);
 
       expect(() => installHook(
-        buildMode: BuildMode.debug,
         shellPath: 'abc',
-        enableObservatory: false,
-        startPaused: false,
-        observatoryPort: 123,
-        extraFrontEndOptions: <String>[],
+        debuggingOptions: DebuggingOptions.enabled(
+          BuildInfo.debug,
+          startPaused: true,
+          hostVmServicePort: 123,
+        ),
       ), throwsAssertionError);
 
-      FlutterPlatform capturedPlatform;
+      FlutterPlatform? capturedPlatform;
       final Map<String, String> expectedPrecompiledDillFiles = <String, String>{'Key': 'Value'};
       final FlutterPlatform flutterPlatform = installHook(
         shellPath: 'abc',
-        enableObservatory: true,
+        debuggingOptions: DebuggingOptions.enabled(
+          BuildInfo.debug,
+          startPaused: true,
+          disableServiceAuthCodes: true,
+          hostVmServicePort: 200,
+        ),
+        enableVmService: true,
         machine: true,
-        startPaused: true,
-        disableServiceAuthCodes: true,
-        port: 100,
         precompiledDillPath: 'def',
         precompiledDillFiles: expectedPrecompiledDillFiles,
-        buildMode: BuildMode.debug,
-        trackWidgetCreation: true,
         updateGoldens: true,
-        buildTestAssets: true,
-        observatoryPort: 200,
+        testAssetDirectory: '/build/test',
         serverType: InternetAddressType.IPv6,
         icudtlPath: 'ghi',
-        extraFrontEndOptions: <String>[],
         platformPluginRegistration: (FlutterPlatform platform) {
           capturedPlatform = platform;
-        });
+        },
+      );
 
       expect(identical(capturedPlatform, flutterPlatform), equals(true));
       expect(flutterPlatform.shellPath, equals('abc'));
-      expect(flutterPlatform.enableObservatory, equals(true));
+      expect(flutterPlatform.debuggingOptions.buildInfo, equals(BuildInfo.debug));
+      expect(flutterPlatform.debuggingOptions.startPaused, equals(true));
+      expect(flutterPlatform.debuggingOptions.disableServiceAuthCodes, equals(true));
+      expect(flutterPlatform.debuggingOptions.hostVmServicePort, equals(200));
+      expect(flutterPlatform.enableVmService, equals(true));
       expect(flutterPlatform.machine, equals(true));
-      expect(flutterPlatform.startPaused, equals(true));
-      expect(flutterPlatform.disableServiceAuthCodes, equals(true));
-      expect(flutterPlatform.port, equals(100));
       expect(flutterPlatform.host, InternetAddress.loopbackIPv6);
-      expect(flutterPlatform.explicitObservatoryPort, equals(200));
       expect(flutterPlatform.precompiledDillPath, equals('def'));
       expect(flutterPlatform.precompiledDillFiles, expectedPrecompiledDillFiles);
-      expect(flutterPlatform.buildMode, equals(BuildMode.debug));
-      expect(flutterPlatform.trackWidgetCreation, equals(true));
       expect(flutterPlatform.updateGoldens, equals(true));
-      expect(flutterPlatform.buildTestAssets, equals(true));
+      expect(flutterPlatform.testAssetDirectory, '/build/test');
       expect(flutterPlatform.icudtlPath, equals('ghi'));
+    });
+  });
+
+  group('generateTestBootstrap', () {
+    group('writes a "const packageConfigLocation" string', () {
+      test('with null packageConfigUri', () {
+        final String contents = generateTestBootstrap(
+          testUrl:
+              Uri.parse('file:///Users/me/some_package/test/some_test.dart'),
+          host: InternetAddress('127.0.0.1', type: InternetAddressType.IPv4),
+        );
+        // IMPORTANT: DO NOT RENAME, REMOVE, OR MODIFY THE
+        // 'const packageConfigLocation' VARIABLE.
+        // Dash tooling like Dart DevTools performs an evaluation on this variable
+        // at runtime to get the package config location for Flutter test targets.
+        expect(contents, contains("const packageConfigLocation = 'null';"));
+      });
+
+      test('with non-null packageConfigUri', () {
+        final String contents = generateTestBootstrap(
+          testUrl:
+              Uri.parse('file:///Users/me/some_package/test/some_test.dart'),
+          host: InternetAddress('127.0.0.1', type: InternetAddressType.IPv4),
+          packageConfigUri: Uri.parse(
+              'file:///Users/me/some_package/.dart_tool/package_config.json'),
+        );
+        // IMPORTANT: DO NOT RENAME, REMOVE, OR MODIFY THE
+        // 'const packageConfigLocation' VARIABLE.
+        // Dash tooling like Dart DevTools performs an evaluation on this variable
+        // at runtime to get the package config location for Flutter test targets.
+        expect(
+          contents,
+          contains(
+            "const packageConfigLocation = 'file:///Users/me/some_package/.dart_tool/package_config.json';",
+          ),
+        );
+      });
     });
   });
 }
 
-class MockSuitePlatform extends Mock implements SuitePlatform {}
-
-class MockProcessManager extends Mock implements ProcessManager {}
-
-class MockProcess extends Mock implements Process {}
-
-class MockPlatform extends Mock implements Platform {}
-
-class MockHttpServer extends Mock implements HttpServer {}
-
-// A FlutterPlatform with enough fields set to load and start a test.
-//
-// Uses a mock HttpServer. We don't want to bind random ports in our CI hosts.
-class TestFlutterPlatform extends FlutterPlatform {
-  TestFlutterPlatform() : super(
-    buildMode: BuildMode.debug,
-    shellPath: '/',
-    precompiledDillPath: 'example.dill',
-    host: InternetAddress.loopbackIPv6,
-    port: 0,
-    updateGoldens: false,
-    startPaused: false,
-    enableObservatory: false,
-    buildTestAssets: false,
-    extraFrontEndOptions: <String>[],
-  );
+class _UnstartableDevice extends Fake implements Device {
+  @override
+  Future<void> dispose() => Future<void>.value();
 
   @override
-  @protected
-  Future<HttpServer> bind(InternetAddress host, int port) async => MockHttpServer();
+  Future<TargetPlatform> get targetPlatform => Future<TargetPlatform>.value(TargetPlatform.android);
+
+  @override
+  Future<bool> stopApp(ApplicationPackage? app, {String? userIdentifier}) async {
+    return true;
+  }
+
+  @override
+  Future<bool> uninstallApp(ApplicationPackage app, {String? userIdentifier}) async => true;
+
+  @override
+  Future<LaunchResult> startApp(covariant ApplicationPackage? package, {String? mainPath, String? route, required DebuggingOptions debuggingOptions, Map<String, Object?> platformArgs = const <String, Object>{}, bool prebuiltApplication = false, String? userIdentifier}) async {
+    return LaunchResult.failed();
+  }
 }
+
+class _FakeFlutterProject extends Fake implements FlutterProject {
+  @override
+  FlutterManifest get manifest => FlutterManifest.empty(logger: BufferLogger.test());
+}
+
+class _FakeApplicationPackageFactory implements ApplicationPackageFactory {
+  TargetPlatform? platformRequested;
+  File? applicationBinaryRequested;
+  ApplicationPackage applicationPackage = _FakeApplicationPackage();
+
+  @override
+  Future<ApplicationPackage?> getPackageForPlatform(TargetPlatform platform, {BuildInfo? buildInfo, File? applicationBinary}) async {
+    platformRequested = platform;
+    applicationBinaryRequested = applicationBinary;
+    return applicationPackage;
+  }
+}
+
+class _FakeApplicationPackage extends Fake implements ApplicationPackage {}

@@ -30,5 +30,12 @@
   "pasteButtonLabel": "Prilepi",
   "selectAllButtonLabel": "Izberi vse",
   "tabSemanticsLabel": "Zavihek $tabIndex od $tabCount",
-  "modalBarrierDismissLabel": "Opusti"
+  "modalBarrierDismissLabel": "Opusti",
+  "searchTextFieldPlaceholderLabel": "Iskanje",
+  "noSpellCheckReplacementsLabel": "Ni zamenjav",
+  "menuDismissLabel": "Opusti meni",
+  "lookUpButtonLabel": "Pogled gor",
+  "searchWebButtonLabel": "Iskanje v spletu",
+  "shareButtonLabel": "Deli …",
+  "clearButtonLabel": "Počisti"
 }

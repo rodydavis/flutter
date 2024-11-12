@@ -11,7 +11,7 @@ void main() {
     final SemanticsHandle handle = tester.ensureSemantics();
     await tester.pumpWidget(MaterialApp(
       theme: ThemeData(platform: TargetPlatform.iOS),
-      home: ChipDemo(),
+      home: const ChipDemo(),
     ));
 
     expect(tester.getSemantics(find.byIcon(Icons.vignette)), matchesSemantics(
@@ -20,6 +20,7 @@ void main() {
       isEnabled: true,
       isFocusable: true,
       hasTapAction: true,
+      hasFocusAction: true,
       label: 'Update border shape',
     ));
 
@@ -29,6 +30,7 @@ void main() {
       isEnabled: true,
       isFocusable: true,
       hasTapAction: true,
+      hasFocusAction: true,
       label: 'Reset chips',
     ));
 

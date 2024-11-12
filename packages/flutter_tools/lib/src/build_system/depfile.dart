@@ -2,16 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:meta/meta.dart';
-
+import '../base/error_handling_io.dart';
 import '../base/file_system.dart';
 import '../base/logger.dart';
 
 /// A service for creating and parsing [Depfile]s.
 class DepfileService {
   DepfileService({
-    @required Logger logger,
-    @required FileSystem fileSystem,
+    required Logger logger,
+    required FileSystem fileSystem,
   }) : _logger = logger,
        _fileSystem = fileSystem;
 
@@ -22,13 +21,13 @@ class DepfileService {
 
   /// Given an [depfile] File, write the depfile contents.
   ///
-  /// If either [inputs] or [outputs] is empty, ensures the file does not
-  /// exist.
-  void writeToFile(Depfile depfile, File output) {
-    if (depfile.inputs.isEmpty || depfile.outputs.isEmpty) {
-      if (output.existsSync()) {
-        output.deleteSync();
-      }
+  /// If both [inputs] and [outputs] are empty, ensures the file does not
+  /// exist. This can be overridden with the [writeEmpty] parameter when
+  /// both static and runtime dependencies exist and it is not desired
+  /// to force a rerun due to no depfile.
+  void writeToFile(Depfile depfile, File output, {bool writeEmpty = false}) {
+    if (depfile.inputs.isEmpty && depfile.outputs.isEmpty && !writeEmpty) {
+      ErrorHandlingFileSystem.deleteIfExists(output);
       return;
     }
     final StringBuffer buffer = StringBuffer();
@@ -59,20 +58,12 @@ class DepfileService {
   /// The [file] contains a list of newline separated file URIs. The output
   /// file must be manually specified.
   Depfile parseDart2js(File file, File output) {
-    final List<File> inputs = <File>[];
-    for (final String rawUri in file.readAsLinesSync()) {
-      if (rawUri.trim().isEmpty) {
-        continue;
-      }
-      final Uri fileUri = Uri.tryParse(rawUri);
-      if (fileUri == null) {
-        continue;
-      }
-      if (fileUri.scheme != 'file') {
-        continue;
-      }
-      inputs.add(_fileSystem.file(fileUri));
-    }
+    final List<File> inputs = <File>[
+      for (final String rawUri in file.readAsLinesSync())
+        if (rawUri.trim().isNotEmpty)
+          if (Uri.tryParse(rawUri) case final Uri fileUri when fileUri.scheme == 'file')
+            _fileSystem.file(fileUri),
+    ];
     return Depfile(inputs, <File>[output]);
   }
 
@@ -99,10 +90,10 @@ class DepfileService {
         .replaceAllMapped(_separatorExpr, (Match match) => '${match.group(1)}\n')
         .split('\n')
     // Expand escape sequences, so that '\ ', for example,ß becomes ' '
-        .map<String>((String path) => path.replaceAllMapped(_escapeExpr, (Match match) => match.group(1)).trim())
+        .map<String>((String path) => path.replaceAllMapped(_escapeExpr, (Match match) => match.group(1)!).trim())
         .where((String path) => path.isNotEmpty)
     // The tool doesn't write duplicates to these lists. This call is an attempt to
-    // be resillient to the outputs of other tools which write or user edits to depfiles.
+    // be resilient to the outputs of other tools which write or user edits to depfiles.
         .toSet()
         .map(_fileSystem.file)
         .toList();

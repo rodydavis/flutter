@@ -2,10 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'semantics_tester.dart';
 
@@ -19,6 +17,7 @@ void main() {
     testWidgets('forward vertical', (WidgetTester tester) async {
       final SemanticsTester semantics = SemanticsTester(tester);
       final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         Directionality(
@@ -49,6 +48,7 @@ void main() {
     testWidgets('reverse vertical', (WidgetTester tester) async {
       final SemanticsTester semantics = SemanticsTester(tester);
       final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         Directionality(
@@ -80,6 +80,7 @@ void main() {
     testWidgets('forward horizontal', (WidgetTester tester) async {
       final SemanticsTester semantics = SemanticsTester(tester);
       final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         Directionality(
@@ -111,6 +112,7 @@ void main() {
     testWidgets('reverse horizontal', (WidgetTester tester) async {
       final SemanticsTester semantics = SemanticsTester(tester);
       final ScrollController controller = ScrollController();
+      addTearDown(controller.dispose);
 
       await tester.pumpWidget(
         Directionality(

@@ -2,22 +2,35 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
+/// @docImport 'navigator.dart';
+library;
 
 import 'basic.dart';
 import 'framework.dart';
-import 'navigator.dart';
 import 'routes.dart';
 
 /// A modal route that replaces the entire screen.
+///
+/// The [PageRouteBuilder] subclass provides a way to create a [PageRoute] using
+/// callbacks rather than by defining a new class via subclassing.
+///
+/// If `barrierDismissible` is true, then pressing the escape key on the keyboard
+/// will cause the current route to be popped with null as the value.
+///
+/// See also:
+///
+///  * [Route], which documents the meaning of the `T` generic type argument.
 abstract class PageRoute<T> extends ModalRoute<T> {
   /// Creates a modal route that replaces the entire screen.
   PageRoute({
-    RouteSettings settings,
+    super.settings,
+    super.requestFocus,
     this.fullscreenDialog = false,
-  }) : super(settings: settings);
+    this.allowSnapshotting = true,
+    bool barrierDismissible = false,
+  }) : _barrierDismissible = barrierDismissible;
 
-  /// {@template flutter.widgets.pageRoute.fullscreenDialog}
+  /// {@template flutter.widgets.PageRoute.fullscreenDialog}
   /// Whether this page route is a full-screen dialog.
   ///
   /// In Material and Cupertino, being fullscreen has the effects of making
@@ -28,16 +41,26 @@ abstract class PageRoute<T> extends ModalRoute<T> {
   final bool fullscreenDialog;
 
   @override
+  final bool allowSnapshotting;
+
+  @override
   bool get opaque => true;
 
   @override
-  bool get barrierDismissible => false;
+  bool get barrierDismissible => _barrierDismissible;
+  final bool _barrierDismissible;
 
   @override
   bool canTransitionTo(TransitionRoute<dynamic> nextRoute) => nextRoute is PageRoute;
 
   @override
   bool canTransitionFrom(TransitionRoute<dynamic> previousRoute) => previousRoute is PageRoute;
+
+  @override
+  bool get popGestureEnabled {
+    // Fullscreen dialogs aren't dismissible by back swipe.
+    return !fullscreenDialog && super.popGestureEnabled;
+  }
 }
 
 Widget _defaultTransitionsBuilder(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
@@ -49,17 +72,18 @@ Widget _defaultTransitionsBuilder(BuildContext context, Animation<double> animat
 /// Callers must define the [pageBuilder] function which creates the route's
 /// primary contents. To add transitions define the [transitionsBuilder] function.
 ///
+/// The `T` generic type argument corresponds to the type argument of the
+/// created [Route] objects.
+///
 /// See also:
 ///
-///  * [TransitionBuilderPage], which is a [Page] of this class.
+///  * [Route], which documents the meaning of the `T` generic type argument.
 class PageRouteBuilder<T> extends PageRoute<T> {
   /// Creates a route that delegates to builder callbacks.
-  ///
-  /// The [pageBuilder], [transitionsBuilder], [opaque], [barrierDismissible],
-  /// [maintainState], and [fullscreenDialog] arguments must not be null.
   PageRouteBuilder({
-    RouteSettings settings,
-    @required this.pageBuilder,
+    super.settings,
+    super.requestFocus,
+    required this.pageBuilder,
     this.transitionsBuilder = _defaultTransitionsBuilder,
     this.transitionDuration = const Duration(milliseconds: 300),
     this.reverseTransitionDuration = const Duration(milliseconds: 300),
@@ -68,14 +92,9 @@ class PageRouteBuilder<T> extends PageRoute<T> {
     this.barrierColor,
     this.barrierLabel,
     this.maintainState = true,
-    bool fullscreenDialog = false,
-  }) : assert(pageBuilder != null),
-       assert(transitionsBuilder != null),
-       assert(opaque != null),
-       assert(barrierDismissible != null),
-       assert(maintainState != null),
-       assert(fullscreenDialog != null),
-       super(settings: settings, fullscreenDialog: fullscreenDialog);
+    super.fullscreenDialog,
+    super.allowSnapshotting = true,
+  });
 
   /// {@template flutter.widgets.pageRouteBuilder.pageBuilder}
   /// Used build the route's primary contents.
@@ -89,6 +108,8 @@ class PageRouteBuilder<T> extends PageRoute<T> {
   ///
   /// See [ModalRoute.buildTransitions] for complete definition of the parameters.
   /// {@endtemplate}
+  ///
+  /// The default transition is a jump cut (i.e. no animation).
   final RouteTransitionsBuilder transitionsBuilder;
 
   @override
@@ -104,10 +125,10 @@ class PageRouteBuilder<T> extends PageRoute<T> {
   final bool barrierDismissible;
 
   @override
-  final Color barrierColor;
+  final Color? barrierColor;
 
   @override
-  final String barrierLabel;
+  final String? barrierLabel;
 
   @override
   final bool maintainState;
@@ -120,128 +141,5 @@ class PageRouteBuilder<T> extends PageRoute<T> {
   @override
   Widget buildTransitions(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
     return transitionsBuilder(context, animation, secondaryAnimation, child);
-  }
-}
-
-/// A page that creates a [PageRoute] with customizable transition.
-///
-/// Similar to the [PageRouteBuilder], callers must define the [pageBuilder]
-/// function which creates the route's primary contents. To add transitions
-/// define the [transitionsBuilder] function.
-///
-/// See also:
-///
-///  * [PageRouteBuilder], which is a [PageRoute] version of this class.
-class TransitionBuilderPage<T> extends Page<T> {
-  /// Creates a [TransitionBuilderPage].
-  const TransitionBuilderPage({
-    @required this.pageBuilder,
-    this.transitionsBuilder = _defaultTransitionsBuilder,
-    this.transitionDuration = const Duration(milliseconds: 300),
-    this.reverseTransitionDuration = const Duration(milliseconds: 300),
-    this.opaque = true,
-    this.barrierDismissible = false,
-    this.barrierColor,
-    this.barrierLabel,
-    this.maintainState = true,
-    this.fullscreenDialog = false,
-    LocalKey key,
-    String name,
-    Object arguments,
-  }) : assert(pageBuilder != null),
-       assert(transitionsBuilder != null),
-       assert(opaque != null),
-       assert(barrierDismissible != null),
-       assert(maintainState != null),
-       assert(fullscreenDialog != null),
-       super(key: key, name: name, arguments: arguments);
-
-  /// {@macro flutter.widgets.pageRouteBuilder.pageBuilder}
-  final RoutePageBuilder pageBuilder;
-
-  /// {@macro flutter.widgets.pageRouteBuilder.transitionsBuilder}
-  final RouteTransitionsBuilder transitionsBuilder;
-
-  /// {@macro flutter.widgets.transitionRoute.transitionDuration}
-  final Duration transitionDuration;
-
-  /// {@macro flutter.widgets.transitionRoute.reverseTransitionDuration}
-  final Duration reverseTransitionDuration;
-
-  /// {@macro flutter.widgets.transitionRoute.opaque}
-  final bool opaque;
-
-  /// {@macro flutter.widgets.modalRoute.barrierDismissible}
-  final bool barrierDismissible;
-
-  /// {@macro flutter.widgets.modalRoute.barrierColor}
-  ///
-  /// See also:
-  ///
-  ///  * [barrierDismissible], which controls the behavior of the barrier when
-  ///    tapped.
-  ///  * [ModalBarrier], the widget that implements this feature.
-  final Color barrierColor;
-
-  /// {@macro flutter.widgets.modalRoute.barrierLabel}
-  ///
-  /// See also:
-  ///
-  ///  * [barrierDismissible], which controls the behavior of the barrier when
-  ///    tapped.
-  ///  * [ModalBarrier], the widget that implements this feature.
-  final String barrierLabel;
-
-  /// {@macro flutter.widgets.modalRoute.maintainState}
-  final bool maintainState;
-
-  /// {@macro flutter.widgets.pageRoute.fullscreenDialog}
-  final bool fullscreenDialog;
-
-  @override
-  Route<T> createRoute(BuildContext context) => _PageBasedPageRouteBuilder<T>(this);
-}
-
-// A page-based version of the [PageRouteBuilder].
-//
-// This class gets its builder and settings directly from the [TransitionBuilderPage],
-// so that its content updates accordingly to the [TransitionBuilderPage].
-class _PageBasedPageRouteBuilder<T> extends PageRoute<T>{
-  _PageBasedPageRouteBuilder(
-    TransitionBuilderPage<T> page,
-  ) : assert(page != null),
-       super(settings: page, fullscreenDialog: page.fullscreenDialog);
-
-  TransitionBuilderPage<T> get _page => settings as TransitionBuilderPage<T>;
-
-  @override
-  Duration get transitionDuration => _page.transitionDuration;
-
-  @override
-  Duration get reverseTransitionDuration => _page.reverseTransitionDuration;
-
-  @override
-  bool get opaque => _page.opaque;
-
-  @override
-  bool get barrierDismissible => _page.barrierDismissible;
-
-  @override
-  Color get barrierColor => _page.barrierColor;
-
-  @override
-  String get barrierLabel => _page.barrierLabel;
-
-  @override
-  bool get maintainState => _page.maintainState;
-
-  @override
-  Widget buildPage(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation) {
-    return _page.pageBuilder(context, animation, secondaryAnimation);
-  }
-
-  @override
-  Widget buildTransitions(BuildContext context, Animation<double> animation, Animation<double> secondaryAnimation, Widget child) {
-    return _page.transitionsBuilder(context, animation, secondaryAnimation, child);
   }
 }

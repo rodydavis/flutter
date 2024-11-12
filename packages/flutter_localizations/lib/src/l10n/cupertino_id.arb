@@ -20,5 +20,12 @@
   "pasteButtonLabel": "Tempel",
   "selectAllButtonLabel": "Pilih Semua",
   "tabSemanticsLabel": "Tab $tabIndex dari $tabCount",
-  "modalBarrierDismissLabel": "Tutup"
+  "modalBarrierDismissLabel": "Tutup",
+  "searchTextFieldPlaceholderLabel": "Telusuri",
+  "noSpellCheckReplacementsLabel": "Penggantian Tidak Ditemukan",
+  "menuDismissLabel": "Tutup menu",
+  "lookUpButtonLabel": "Cari",
+  "searchWebButtonLabel": "Telusuri di Web",
+  "shareButtonLabel": "Bagikan...",
+  "clearButtonLabel": "Hapus"
 }

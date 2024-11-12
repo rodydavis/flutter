@@ -2,28 +2,32 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+/// @docImport 'package:test_api/backend.dart';
+/// @docImport 'package:test_api/scaffolding.dart';
+library;
+
 import 'dart:async';
 
+import 'package:leak_tracker_flutter_testing/leak_tracker_flutter_testing.dart';
 import 'package:meta/meta.dart';
+import 'package:test_api/scaffolding.dart' show Timeout;
 import 'package:test_api/src/backend/declarer.dart'; // ignore: implementation_imports
-import 'package:test_api/src/frontend/timeout.dart'; // ignore: implementation_imports
 import 'package:test_api/src/backend/group.dart'; // ignore: implementation_imports
 import 'package:test_api/src/backend/group_entry.dart'; // ignore: implementation_imports
-import 'package:test_api/src/backend/test.dart'; // ignore: implementation_imports
-import 'package:test_api/src/backend/suite.dart'; // ignore: implementation_imports
+import 'package:test_api/src/backend/invoker.dart'; // ignore: implementation_imports
 import 'package:test_api/src/backend/live_test.dart'; // ignore: implementation_imports
-import 'package:test_api/src/backend/suite_platform.dart'; // ignore: implementation_imports
-import 'package:test_api/src/backend/runtime.dart'; // ignore: implementation_imports
 import 'package:test_api/src/backend/message.dart'; // ignore: implementation_imports
-import 'package:test_api/src/backend/invoker.dart';  // ignore: implementation_imports
+import 'package:test_api/src/backend/runtime.dart'; // ignore: implementation_imports
 import 'package:test_api/src/backend/state.dart'; // ignore: implementation_imports
+import 'package:test_api/src/backend/suite.dart'; // ignore: implementation_imports
+import 'package:test_api/src/backend/suite_platform.dart'; // ignore: implementation_imports
+import 'package:test_api/src/backend/test.dart'; // ignore: implementation_imports
 
-// ignore: deprecated_member_use
-import 'package:test_api/test_api.dart';
+export 'package:test_api/fake.dart' show Fake;
 
-Declarer _localDeclarer;
+Declarer? _localDeclarer;
 Declarer get _declarer {
-  final Declarer declarer = Zone.current[#test.declarer] as Declarer;
+  final Declarer? declarer = Zone.current[#test.declarer] as Declarer?;
   if (declarer != null) {
     return declarer;
   }
@@ -33,6 +37,7 @@ Declarer get _declarer {
     Future<void>(() {
       Invoker.guard<Future<void>>(() async {
         final _Reporter reporter = _Reporter(color: false); // disable color when run directly.
+        // ignore: recursive_getters, this self-call is safe since it will just fetch the declarer instance
         final Group group = _declarer.build();
         final Suite suite = Suite(group, SuitePlatform(Runtime.vm));
         await _runGroup(suite, group, <Group>[], reporter);
@@ -40,7 +45,7 @@ Declarer get _declarer {
       });
     });
   }
-  return _localDeclarer;
+  return _localDeclarer!;
 }
 
 Future<void> _runGroup(Suite suiteConfig, Group group, List<Group> parents, _Reporter reporter) async {
@@ -49,7 +54,7 @@ Future<void> _runGroup(Suite suiteConfig, Group group, List<Group> parents, _Rep
     final bool skipGroup = group.metadata.skip;
     bool setUpAllSucceeded = true;
     if (!skipGroup && group.setUpAll != null) {
-      final LiveTest liveTest = group.setUpAll.load(suiteConfig, groups: parents);
+      final LiveTest liveTest = group.setUpAll!.load(suiteConfig, groups: parents);
       await _runLiveTest(suiteConfig, liveTest, reporter, countSuccess: false);
       setUpAllSucceeded = liveTest.state.result.isPassing;
     }
@@ -68,7 +73,7 @@ Future<void> _runGroup(Suite suiteConfig, Group group, List<Group> parents, _Rep
     // Even if we're closed or setUpAll failed, we want to run all the
     // teardowns to ensure that any state is properly cleaned up.
     if (!skipGroup && group.tearDownAll != null) {
-      final LiveTest liveTest = group.tearDownAll.load(suiteConfig, groups: parents);
+      final LiveTest liveTest = group.tearDownAll!.load(suiteConfig, groups: parents);
       await _runLiveTest(suiteConfig, liveTest, reporter, countSuccess: false);
     }
   } finally {
@@ -95,7 +100,7 @@ Future<void> _runLiveTest(Suite suiteConfig, LiveTest liveTest, _Reporter report
 Future<void> _runSkippedTest(Suite suiteConfig, Test test, List<Group> parents, _Reporter reporter) async {
   final LocalTest skipped = LocalTest(test.name, test.metadata, () { }, trace: test.trace);
   if (skipped.metadata.skipReason != null) {
-    print('Skip: ${skipped.metadata.skipReason}');
+    reporter.log('Skip: ${skipped.metadata.skipReason}');
   }
   final LiveTest liveTest = skipped.load(suiteConfig);
   reporter._onTestStarted(liveTest);
@@ -141,11 +146,11 @@ Future<void> _runSkippedTest(Suite suiteConfig, Test test, List<Group> parents, 
 ///       // ...
 ///     }, onPlatform: {
 ///       // This test is especially slow on Windows.
-///       'windows': new Timeout.factor(2),
+///       'windows': Timeout.factor(2),
 ///       'browser': [
-///         new Skip('TODO: add browser support'),
+///         Skip('add browser support'),
 ///         // This will be slow on browsers once it works on them.
-///         new Timeout.factor(2)
+///         Timeout.factor(2)
 ///       ]
 ///     });
 ///
@@ -155,13 +160,14 @@ Future<void> _runSkippedTest(Suite suiteConfig, Test test, List<Group> parents, 
 void test(
   Object description,
   dynamic Function() body, {
-  String testOn,
-  Timeout timeout,
+  String? testOn,
+  Timeout? timeout,
   dynamic skip,
   dynamic tags,
-  Map<String, dynamic> onPlatform,
-  int retry,
+  Map<String, dynamic>? onPlatform,
+  int? retry,
 }) {
+  _maybeConfigureTearDownForTestFile();
   _declarer.test(
     description.toString(),
     body,
@@ -184,8 +190,9 @@ void test(
 /// should explain why the group is skipped; this reason will be printed instead
 /// of running the group's tests.
 @isTestGroup
-void group(Object description, void Function() body, { dynamic skip }) {
-  _declarer.group(description.toString(), body, skip: skip);
+void group(Object description, void Function() body, { dynamic skip, int? retry }) {
+  _maybeConfigureTearDownForTestFile();
+  _declarer.group(description.toString(), body, skip: skip, retry: retry);
 }
 
 /// Registers a function to be run before tests.
@@ -200,6 +207,7 @@ void group(Object description, void Function() body, { dynamic skip }) {
 /// Each callback at the top level or in a given group will be run in the order
 /// they were declared.
 void setUp(dynamic Function() body) {
+  _maybeConfigureTearDownForTestFile();
   _declarer.setUp(body);
 }
 
@@ -217,6 +225,7 @@ void setUp(dynamic Function() body) {
 ///
 /// See also [addTearDown], which adds tear-downs to a running test.
 void tearDown(dynamic Function() body) {
+  _maybeConfigureTearDownForTestFile();
   _declarer.tearDown(body);
 }
 
@@ -234,6 +243,7 @@ void tearDown(dynamic Function() body) {
 /// prefer [setUp], and only use [setUpAll] if the callback is prohibitively
 /// slow.
 void setUpAll(dynamic Function() body) {
+  _maybeConfigureTearDownForTestFile();
   _declarer.setUpAll(body);
 }
 
@@ -249,13 +259,37 @@ void setUpAll(dynamic Function() body) {
 /// prefer [tearDown], and only use [tearDownAll] if the callback is
 /// prohibitively slow.
 void tearDownAll(dynamic Function() body) {
+  _maybeConfigureTearDownForTestFile();
   _declarer.tearDownAll(body);
 }
 
+bool _isTearDownForTestFileConfigured = false;
+
+/// If needed, configures `tearDownAll` after all user defined `tearDownAll` in the test file.
+///
+/// This function should be invoked in all functions, that may be invoked by user in the test file,
+/// to be invoked before any other `tearDownAll`.
+void _maybeConfigureTearDownForTestFile() {
+  if (_isTearDownForTestFileConfigured || !_shouldConfigureTearDownForTestFile()) {
+    return;
+  }
+  _declarer.tearDownAll(_tearDownForTestFile);
+  _isTearDownForTestFileConfigured = true;
+}
+
+/// Returns true if tear down for the test file needs to be configured.
+bool _shouldConfigureTearDownForTestFile() {
+  return LeakTesting.enabled;
+}
+
+/// Tear down that should happen after all user defined tear down.
+Future<void> _tearDownForTestFile() async {
+  await maybeTearDownLeakTrackingForAll();
+}
 
 /// A reporter that prints each test on its own line.
 ///
-/// This is currently used in place of [CompactReporter] by `lib/test.dart`,
+/// This is currently used in place of `CompactReporter` by `lib/test.dart`,
 /// which can't transitively import `dart:io` but still needs access to a runner
 /// so that test files can be run directly. This means that until issue 6943 is
 /// fixed, this must not import `dart:io`.
@@ -296,25 +330,26 @@ class _Reporter {
   final bool _printPath;
 
   /// A stopwatch that tracks the duration of the full run.
-  final Stopwatch _stopwatch = Stopwatch();
+  final Stopwatch _stopwatch = Stopwatch(); // flutter_ignore: stopwatch (see analyze.dart)
+  // Ignore context: Used for logging of actual test runs, outside of FakeAsync.
 
   /// The size of `_engine.passed` last time a progress notification was
   /// printed.
-  int _lastProgressPassed;
+  int? _lastProgressPassed;
 
   /// The size of `_engine.skipped` last time a progress notification was
   /// printed.
-  int _lastProgressSkipped;
+  int? _lastProgressSkipped;
 
   /// The size of `_engine.failed` last time a progress notification was
   /// printed.
-  int _lastProgressFailed;
+  int? _lastProgressFailed;
 
   /// The message printed for the last progress notification.
-  String _lastProgressMessage;
+  String? _lastProgressMessage;
 
   /// The suffix added to the last progress notification.
-  String _lastProgressSuffix;
+  String? _lastProgressSuffix;
 
   /// The set of all subscriptions to various streams.
   final Set<StreamSubscription<void>> _subscriptions = <StreamSubscription<void>>{};
@@ -333,7 +368,7 @@ class _Reporter {
       if (message.type == MessageType.skip) {
         text = '  $_yellow$text$_noColor';
       }
-      print(text);
+      log(text);
     }));
   }
 
@@ -350,19 +385,13 @@ class _Reporter {
       return;
     }
     _progressLine(_description(liveTest), suffix: ' $_bold$_red[E]$_noColor');
-    print(_indent(error.toString()));
-    print(_indent('$stackTrace'));
+    log(_indent(error.toString()));
+    log(_indent('$stackTrace'));
   }
 
   /// A callback called when the engine is finished running tests.
-  ///
-  /// [success] will be `true` if all tests passed, `false` if some tests
-  /// failed, and `null` if the engine was closed prematurely.
   void _onDone() {
     final bool success = failed.isEmpty;
-    if (success == null) {
-      return;
-    }
     if (!success) {
       _progressLine('Some tests failed.', color: _red);
     } else if (passed.isEmpty) {
@@ -377,7 +406,7 @@ class _Reporter {
   /// [message] goes after the progress report. If [color] is passed, it's used
   /// as the color for [message]. If [suffix] is passed, it's added to the end
   /// of [message].
-  void _progressLine(String message, { String color, String suffix }) {
+  void _progressLine(String message, { String? color, String? suffix }) {
     // Print nothing if nothing has changed since the last progress line.
     if (passed.length == _lastProgressPassed &&
         skipped.length == _lastProgressSkipped &&
@@ -426,7 +455,7 @@ class _Reporter {
     buffer.write(message);
     buffer.write(_noColor);
 
-    print(buffer.toString());
+    log(buffer.toString());
   }
 
   /// Returns a representation of [duration] as `MM:SS`.
@@ -447,17 +476,24 @@ class _Reporter {
     }
     return name;
   }
+
+  /// Print the message to the console.
+  void log(String message) {
+    // We centralize all the prints in this file through this one method so that
+    // in principle we can reroute the output easily should we need to.
+    print(message); // ignore: avoid_print
+  }
 }
 
-String _indent(String string, { int size, String first }) {
+String _indent(String string, { int? size, String? first }) {
   size ??= first == null ? 2 : first.length;
   return _prefixLines(string, ' ' * size, first: first);
 }
 
-String _prefixLines(String text, String prefix, { String first, String last, String single }) {
+String _prefixLines(String text, String prefix, { String? first, String? last, String? single }) {
   first ??= prefix;
   last ??= prefix;
-  single ??= first ?? last ?? prefix;
+  single ??= first;
   final List<String> lines = text.split('\n');
   if (lines.length == 1) {
     return '$single$text';

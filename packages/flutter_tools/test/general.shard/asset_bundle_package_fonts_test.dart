@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:file/file.dart';
@@ -11,12 +10,10 @@ import 'package:file/memory.dart';
 import 'package:flutter_tools/src/asset.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
 
-import 'package:flutter_tools/src/cache.dart';
 import 'package:flutter_tools/src/globals.dart' as globals;
 
 import '../src/common.dart';
 import '../src/context.dart';
-import '../src/pubspec_schema.dart';
 
 void main() {
   String fixPath(String path) {
@@ -25,9 +22,9 @@ void main() {
     // fixed we fix them here.
     // TODO(dantup): Remove this function once the above issue is fixed and
     // rolls into Flutter.
-    return path?.replaceAll('/', globals.fs.path.separator);
+    return path.replaceAll('/', globals.fs.path.separator);
   }
-  void writePubspecFile(String path, String name, { String fontsSection }) {
+  void writePubspecFile(String path, String name, { String? fontsSection }) {
     if (fontsSection == null) {
       fontsSection = '';
     } else {
@@ -49,16 +46,25 @@ $fontsSection
 ''');
   }
 
-  void establishFlutterRoot() {
-    // Setting flutterRoot here so that it picks up the MemoryFileSystem's
-    // path separator.
-    Cache.flutterRoot = getFlutterRoot();
-  }
-
-  void writePackagesFile(String packages) {
-    globals.fs.file('.packages')
-      ..createSync()
-      ..writeAsStringSync(packages);
+  void writePackageConfigFile(Map<String, String> packages) {
+    globals.fs.directory('.dart_tool').childFile('package_config.json')
+      ..createSync(recursive: true)
+      ..writeAsStringSync(
+        json.encode(<String, dynamic>{
+          'packages': <dynamic>[
+            ...packages.entries.map((MapEntry<String, String> entry) {
+              return <String, dynamic>{
+                'name': entry.key,
+                'rootUri': '../${entry.value}',
+                'packageUri': 'lib/',
+                'languageVersion': '3.2',
+              };
+            }),
+          ],
+          'configVersion': 2,
+        },
+      ),
+    );
   }
 
   Future<void> buildAndVerifyFonts(
@@ -68,14 +74,14 @@ $fontsSection
     String expectedAssetManifest,
   ) async {
     final AssetBundle bundle = AssetBundleFactory.instance.createBundle();
-    await bundle.build(manifestPath: 'pubspec.yaml', packagesPath: '.packages');
+    await bundle.build(packageConfigPath: '.dart_tool/package_config.json');
 
     for (final String packageName in packages) {
       for (final String packageFont in packageFonts) {
         final String entryKey = 'packages/$packageName/$packageFont';
         expect(bundle.entries.containsKey(entryKey), true);
         expect(
-          utf8.decode(await bundle.entries[entryKey].contentsAsBytes()),
+          utf8.decode(await bundle.entries[entryKey]!.contentsAsBytes()),
           packageFont,
         );
       }
@@ -83,14 +89,14 @@ $fontsSection
       for (final String localFont in localFonts) {
         expect(bundle.entries.containsKey(localFont), true);
         expect(
-          utf8.decode(await bundle.entries[localFont].contentsAsBytes()),
+          utf8.decode(await bundle.entries[localFont]!.contentsAsBytes()),
           localFont,
         );
       }
     }
 
     expect(
-      json.decode(utf8.decode(await bundle.entries['FontManifest.json'].contentsAsBytes())),
+      json.decode(utf8.decode(await bundle.entries['FontManifest.json']!.contentsAsBytes())),
       json.decode(expectedAssetManifest),
     );
   }
@@ -102,7 +108,7 @@ $fontsSection
   }
 
   group('AssetBundle fonts from packages', () {
-    FileSystem testFileSystem;
+    FileSystem? testFileSystem;
 
     setUp(() async {
       testFileSystem = MemoryFileSystem(
@@ -110,37 +116,31 @@ $fontsSection
           ? FileSystemStyle.windows
           : FileSystemStyle.posix,
       );
-      testFileSystem.currentDirectory = testFileSystem.systemTempDirectory.createTempSync('flutter_asset_bundle_test.');
+      testFileSystem!.currentDirectory = testFileSystem!.systemTempDirectory.createTempSync('flutter_asset_bundle_test.');
     });
 
     testUsingContext('App includes neither font manifest nor fonts when no defines fonts', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       writePubspecFile('pubspec.yaml', 'test');
-      writePackagesFile('test_package:p/p/lib/');
+      writePackageConfigFile(<String, String>{'test_package': 'p/p/'});
       writePubspecFile('p/p/pubspec.yaml', 'test_package');
 
       final AssetBundle bundle = AssetBundleFactory.instance.createBundle();
-      await bundle.build(manifestPath: 'pubspec.yaml', packagesPath: '.packages');
-      expect(bundle.entries.length, 3); // LICENSE, AssetManifest, FontManifest
-      expect(bundle.entries.containsKey('FontManifest.json'), isTrue);
+      await bundle.build(packageConfigPath: '.dart_tool/package_config.json');
+      expect(bundle.entries.keys, unorderedEquals(<String>['AssetManifest.bin',
+        'AssetManifest.json', 'FontManifest.json', 'NOTICES.Z']));
     }, overrides: <Type, Generator>{
       FileSystem: () => testFileSystem,
       ProcessManager: () => FakeProcessManager.any(),
     });
 
     testUsingContext('App font uses font file from package', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       const String fontsSection = '''
        - family: foo
          fonts:
            - asset: packages/test_package/bar
 ''';
       writePubspecFile('pubspec.yaml', 'test', fontsSection: fontsSection);
-      writePackagesFile('test_package:p/p/lib/');
+      writePackageConfigFile(<String, String>{'test_package': 'p/p/'});
       writePubspecFile('p/p/pubspec.yaml', 'test_package');
 
       const String font = 'bar';
@@ -160,9 +160,6 @@ $fontsSection
     });
 
     testUsingContext('App font uses local font file and package font file', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       const String fontsSection = '''
        - family: foo
          fonts:
@@ -170,7 +167,7 @@ $fontsSection
            - asset: a/bar
 ''';
       writePubspecFile('pubspec.yaml', 'test', fontsSection: fontsSection);
-      writePackagesFile('test_package:p/p/lib/');
+      writePackageConfigFile(<String, String>{'test_package': 'p/p/'});
       writePubspecFile('p/p/pubspec.yaml', 'test_package');
 
       const String packageFont = 'bar';
@@ -193,11 +190,8 @@ $fontsSection
     });
 
     testUsingContext('App uses package font with own font file', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       writePubspecFile('pubspec.yaml', 'test');
-      writePackagesFile('test_package:p/p/lib/');
+      writePackageConfigFile(<String, String>{'test_package': 'p/p/'});
       const String fontsSection = '''
        - family: foo
          fonts:
@@ -227,11 +221,13 @@ $fontsSection
     });
 
     testUsingContext('App uses package font with font file from another package', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       writePubspecFile('pubspec.yaml', 'test');
-      writePackagesFile('test_package:p/p/lib/\ntest_package2:p2/p/lib/');
+      writePackageConfigFile(
+        <String, String>{
+          'test_package': 'p/p/',
+          'test_package2': 'p2/p/',
+        },
+      );
       const String fontsSection = '''
        - family: foo
          fonts:
@@ -262,11 +258,8 @@ $fontsSection
     });
 
     testUsingContext('App uses package font with properties and own font file', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       writePubspecFile('pubspec.yaml', 'test');
-      writePackagesFile('test_package:p/p/lib/');
+      writePackageConfigFile(<String, String>{'test_package': 'p/p/'});
 
       const String pubspec = '''
        - family: foo
@@ -298,9 +291,6 @@ $fontsSection
     });
 
     testUsingContext('App uses local font and package font with own font file.', () async {
-      establishFlutterRoot();
-      writeEmptySchemaFile(globals.fs);
-
       const String fontsSection = '''
        - family: foo
          fonts:
@@ -311,7 +301,7 @@ $fontsSection
         'test',
         fontsSection: fontsSection,
       );
-      writePackagesFile('test_package:p/p/lib/');
+      writePackageConfigFile(<String, String>{'test_package': 'p/p/'});
       writePubspecFile(
         'p/p/pubspec.yaml',
         'test_package',

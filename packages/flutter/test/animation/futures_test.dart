@@ -2,12 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/animation.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('awaiting animation controllers - using direct future', (WidgetTester tester) async {
@@ -15,14 +12,17 @@ void main() {
       duration: const Duration(milliseconds: 100),
       vsync: const TestVSync(),
     );
+    addTearDown(controller1.dispose);
     final AnimationController controller2 = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: const TestVSync(),
     );
+    addTearDown(controller2.dispose);
     final AnimationController controller3 = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: const TestVSync(),
     );
+    addTearDown(controller3.dispose);
     final List<String> log = <String>[];
     Future<void> runTest() async {
       log.add('a'); // t=0
@@ -64,14 +64,17 @@ void main() {
       duration: const Duration(milliseconds: 100),
       vsync: const TestVSync(),
     );
+    addTearDown(controller1.dispose);
     final AnimationController controller2 = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: const TestVSync(),
     );
+    addTearDown(controller2.dispose);
     final AnimationController controller3 = AnimationController(
       duration: const Duration(milliseconds: 300),
       vsync: const TestVSync(),
     );
+    addTearDown(controller3.dispose);
     final List<String> log = <String>[];
     Future<void> runTest() async {
       log.add('a'); // t=0
@@ -141,6 +144,7 @@ void main() {
       duration: const Duration(milliseconds: 100),
       vsync: const TestVSync(),
     );
+    addTearDown(controller1.dispose);
     final TickerFuture f = controller1.forward();
     await tester.pump(); // start ticker
     await tester.pump(const Duration(milliseconds: 200)); // end ticker
@@ -154,6 +158,7 @@ void main() {
       duration: const Duration(milliseconds: 100),
       vsync: const TestVSync(),
     );
+    addTearDown(controller1.dispose);
     final TickerFuture f = controller1.forward();
     await tester.pump(); // start ticker
     controller1.stop(); // cancel ticker
@@ -171,6 +176,7 @@ void main() {
       duration: const Duration(milliseconds: 100),
       vsync: const TestVSync(),
     );
+    addTearDown(controller1.dispose);
     final TickerFuture f = controller1.forward();
     await tester.pump(); // start ticker
     await tester.pump(const Duration(milliseconds: 200)); // end ticker

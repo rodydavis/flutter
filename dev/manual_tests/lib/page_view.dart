@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class CardModel {
@@ -15,6 +14,8 @@ class CardModel {
 }
 
 class PageViewApp extends StatefulWidget {
+  const PageViewApp({super.key});
+
   @override
   PageViewAppState createState() => PageViewAppState();
 }
@@ -32,15 +33,15 @@ class PageViewAppState extends State<PageViewApp> {
     ];
 
     cardModels = List<CardModel>.generate(cardSizes.length, (int i) {
-      final Color color = Color.lerp(Colors.red.shade300, Colors.blue.shade900, i / cardSizes.length);
-      return CardModel(i, cardSizes[i], color);
+      final Color? color = Color.lerp(Colors.red.shade300, Colors.blue.shade900, i / cardSizes.length);
+      return CardModel(i, cardSizes[i], color!);
     });
   }
 
   static const TextStyle cardLabelStyle =
     TextStyle(color: Colors.white, fontSize: 18.0, fontWeight: FontWeight.bold);
 
-  List<CardModel> cardModels;
+  List<CardModel> cardModels = <CardModel>[];
   Size pageSize = const Size(200.0, 200.0);
   Axis scrollDirection = Axis.horizontal;
   bool itemsWrap = false;
@@ -69,9 +70,7 @@ class PageViewAppState extends State<PageViewApp> {
 
   void switchScrollDirection() {
     setState(() {
-      scrollDirection = (scrollDirection == Axis.vertical)
-        ? Axis.horizontal
-        : Axis.vertical;
+      scrollDirection = flipAxis(scrollDirection);
     });
   }
 
@@ -112,17 +111,15 @@ class PageViewAppState extends State<PageViewApp> {
   AppBar _buildAppBar() {
     return AppBar(
       title: const Text('PageView'),
-      actions: <Widget>[
-        Text(scrollDirection == Axis.horizontal ? 'horizontal' : 'vertical'),
-      ],
+      actions: <Widget>[Text(scrollDirection.name)],
     );
   }
 
   Widget _buildBody(BuildContext context) {
     return PageView(
-      children: cardModels.map<Widget>(buildCard).toList(),
       // TODO(abarth): itemsWrap: itemsWrap,
       scrollDirection: scrollDirection,
+      children: cardModels.map<Widget>(buildCard).toList(),
     );
   }
 
@@ -140,13 +137,10 @@ class PageViewAppState extends State<PageViewApp> {
 }
 
 void main() {
-  runApp(MaterialApp(
-    title: 'PageView',
-    theme: ThemeData(
-      brightness: Brightness.light,
-      primarySwatch: Colors.blue,
-      accentColor: Colors.redAccent,
+  runApp(
+    const MaterialApp(
+      title: 'PageView',
+      home: PageViewApp(),
     ),
-    home: PageViewApp(),
-  ));
+  );
 }

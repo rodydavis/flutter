@@ -2,12 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 // This example shows how to build a render tree with a non-cartesian coordinate
 // system. Most of the guts of this examples are in src/sector_layout.dart.
 
 import 'package:flutter/rendering.dart';
+import 'src/binding.dart';
 import 'src/sector_layout.dart';
 
 RenderBox buildSectorExample() {
@@ -23,5 +22,5 @@ RenderBox buildSectorExample() {
 }
 
 void main() {
-  RenderingFlutterBinding(root: buildSectorExample());
+  ViewRenderingFlutterBinding(root: buildSectorExample()).scheduleFrame();
 }

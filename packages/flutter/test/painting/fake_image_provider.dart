@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'dart:async';
 import 'dart:ui' as ui show Codec;
 
 import 'package:flutter/foundation.dart';
@@ -28,7 +25,7 @@ class FakeImageProvider extends ImageProvider<FakeImageProvider> {
   }
 
   @override
-  ImageStreamCompleter load(FakeImageProvider key, DecoderCallback decode) {
+  ImageStreamCompleter loadImage(FakeImageProvider key, ImageDecoderCallback decode) {
     assert(key == this);
     return MultiFrameImageStreamCompleter(
       codec: SynchronousFuture<ui.Codec>(_codec),

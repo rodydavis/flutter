@@ -2,22 +2,25 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:async';
-
 import 'package:async/async.dart';
 import 'package:convert/convert.dart';
 import 'package:crypto/crypto.dart';
 import 'package:meta/meta.dart';
 import 'package:pool/pool.dart';
 import 'package:process/process.dart';
+import 'package:unified_analytics/unified_analytics.dart';
 
 import '../artifacts.dart';
+import '../base/error_handling_io.dart';
 import '../base/file_system.dart';
 import '../base/logger.dart';
 import '../base/platform.dart';
 import '../base/utils.dart';
+import '../build_info.dart';
 import '../cache.dart';
 import '../convert.dart';
+import '../reporting/reporting.dart';
+import 'depfile.dart';
 import 'exceptions.dart';
 import 'file_store.dart';
 import 'source.dart';
@@ -39,7 +42,7 @@ class BuildSystemConfig {
   /// The maximum number of concurrent tasks the build system will run.
   ///
   /// If not provided, defaults to [platform.numberOfProcessors].
-  final int resourcePoolSize;
+  final int? resourcePoolSize;
 }
 
 /// A Target describes a single step during a flutter build.
@@ -134,6 +137,15 @@ abstract class Target {
   /// A list of zero or more depfiles, located directly under {BUILD_DIR}.
   List<String> get depfiles => const <String>[];
 
+  /// A string that differentiates different build variants from each other
+  /// with regards to build flags or settings on the target. This string should
+  /// represent each build variant as a different unique value. If this value
+  /// changes between builds, the target will be invalidated and rebuilt.
+  ///
+  /// By default, this returns null, which indicates there is only one build
+  /// variant, and the target won't invalidate or rebuild due to this property.
+  String? get buildKey => null;
+
   /// Whether this target can be executed with the given [environment].
   ///
   /// Returning `true` will cause [build] to be skipped. This is equivalent
@@ -154,6 +166,7 @@ abstract class Target {
       <Node>[
         for (final Target target in dependencies) target._toNode(environment),
       ],
+      buildKey,
       environment,
       inputsFiles.containsNewDepfile,
     );
@@ -162,9 +175,7 @@ abstract class Target {
   /// Invoke to remove the stamp file if the [buildAction] threw an exception.
   void clearStamp(Environment environment) {
     final File stamp = _findStampFile(environment);
-    if (stamp.existsSync()) {
-      stamp.deleteSync();
-    }
+    ErrorHandlingFileSystem.deleteIfExists(stamp);
   }
 
   void _writeStamp(
@@ -172,19 +183,13 @@ abstract class Target {
     List<File> outputs,
     Environment environment,
   ) {
-    final File stamp = _findStampFile(environment);
-    final List<String> inputPaths = <String>[];
-    for (final File input in inputs) {
-      inputPaths.add(input.path);
-    }
-    final List<String> outputPaths = <String>[];
-    for (final File output in outputs) {
-      outputPaths.add(output.path);
-    }
+    String getPath(File file) => file.path;
     final Map<String, Object> result = <String, Object>{
-      'inputs': inputPaths,
-      'outputs': outputPaths,
+      'inputs': inputs.map(getPath).toList(),
+      'outputs': outputs.map(getPath).toList(),
+      if (buildKey case final String key) 'buildKey': key,
     };
+    final File stamp = _findStampFile(environment);
     if (!stamp.existsSync()) {
       stamp.createSync();
     }
@@ -194,7 +199,7 @@ abstract class Target {
   /// Resolve the set of input patterns and functions into a concrete list of
   /// files.
   ResolvedFiles resolveInputs(Environment environment) {
-    return _resolveConfiguration(inputs, depfiles, environment, implicit: true, inputs: true);
+    return _resolveConfiguration(inputs, depfiles, environment);
   }
 
   /// Find the current set of declared outputs, including wildcard directories.
@@ -206,7 +211,7 @@ abstract class Target {
   }
 
   /// Performs a fold across this target and its dependencies.
-  T fold<T>(T initialValue, T combine(T previousValue, Target target)) {
+  T fold<T>(T initialValue, T Function(T previousValue, Target target) combine) {
     final T dependencyResult = dependencies.fold(
         initialValue, (T prev, Target t) => t.fold(prev, combine));
     return combine(dependencyResult, this);
@@ -218,6 +223,7 @@ abstract class Target {
   /// This requires constants from the [Environment] to resolve the paths of
   /// inputs and the output stamp.
   Map<String, Object> toJson(Environment environment) {
+    final String? key = buildKey;
     return <String, Object>{
       'name': name,
       'dependencies': <String>[
@@ -229,6 +235,7 @@ abstract class Target {
       'outputs': <String>[
         for (final File file in resolveOutputs(environment).sources) file.path,
       ],
+      if (key != null) 'buildKey': key,
       'stamp': _findStampFile(environment).absolute.path,
     };
   }
@@ -239,8 +246,11 @@ abstract class Target {
     return environment.buildDir.childFile(fileName);
   }
 
-  static ResolvedFiles _resolveConfiguration(List<Source> config,
-    List<String> depfiles, Environment environment, { bool implicit = true, bool inputs = true,
+  static ResolvedFiles _resolveConfiguration(
+    List<Source> config,
+    List<String> depfiles,
+    Environment environment, {
+    bool inputs = true,
   }) {
     final SourceVisitor collector = SourceVisitor(environment, inputs);
     for (final Source source in config) {
@@ -249,6 +259,29 @@ abstract class Target {
     depfiles.forEach(collector.visitDepfile);
     return collector;
   }
+}
+
+/// Target that contains multiple other targets.
+///
+/// This target does not do anything in its own [build]
+/// and acts as a wrapper around multiple other targets.
+class CompositeTarget extends Target {
+  CompositeTarget(this.dependencies);
+
+  @override
+  final List<Target> dependencies;
+
+  @override
+  String get name => '_composite';
+
+  @override
+  Future<void> build(Environment environment) async { }
+
+  @override
+  List<Source> get inputs => <Source>[];
+
+  @override
+  List<Source> get outputs => <Source>[];
 }
 
 /// The [Environment] defines several constants for use during the build.
@@ -279,7 +312,7 @@ abstract class Target {
 ///
 /// Example (Good):
 ///
-/// Using the build mode to produce different output. Note that the action
+/// Using the build mode to produce different output. The action
 /// is still responsible for outputting a different file, as defined by the
 /// corresponding output [Source].
 ///
@@ -300,16 +333,22 @@ class Environment {
   ///
   /// [engineVersion] should be set to null for local engine builds.
   factory Environment({
-    @required Directory projectDir,
-    @required Directory outputDir,
-    @required Directory cacheDir,
-    @required Directory flutterRootDir,
-    @required FileSystem fileSystem,
-    @required Logger logger,
-    @required Artifacts artifacts,
-    @required ProcessManager processManager,
-    @required String engineVersion,
-    Directory buildDir,
+    required Directory projectDir,
+    required String packageConfigPath,
+    required Directory outputDir,
+    required Directory cacheDir,
+    required Directory flutterRootDir,
+    required FileSystem fileSystem,
+    required Logger logger,
+    required Artifacts artifacts,
+    required ProcessManager processManager,
+    required Platform platform,
+    required Usage usage,
+    required Analytics analytics,
+    String? engineVersion,
+    required bool generateDartPluginRegistry,
+    required bool useImplicitPubspecResolution,
+    Directory? buildDir,
     Map<String, String> defines = const <String, String>{},
     Map<String, String> inputs = const <String, String>{},
   }) {
@@ -337,6 +376,7 @@ class Environment {
     return Environment._(
       outputDir: outputDir,
       projectDir: projectDir,
+      packageConfigPath: packageConfigPath,
       buildDir: buildDirectory,
       rootBuildDir: rootBuildDir,
       cacheDir: cacheDir,
@@ -346,8 +386,13 @@ class Environment {
       logger: logger,
       artifacts: artifacts,
       processManager: processManager,
+      platform: platform,
+      usage: usage,
+      analytics: analytics,
       engineVersion: engineVersion,
       inputs: inputs,
+      generateDartPluginRegistry: generateDartPluginRegistry,
+      useImplicitPubspecResolution: useImplicitPubspecResolution,
     );
   }
 
@@ -356,21 +401,28 @@ class Environment {
   /// Any directories not provided will fallback to a [testDirectory]
   @visibleForTesting
   factory Environment.test(Directory testDirectory, {
-    Directory projectDir,
-    Directory outputDir,
-    Directory cacheDir,
-    Directory flutterRootDir,
-    Directory buildDir,
+    Directory? projectDir,
+    String? packageConfigPath,
+    Directory? outputDir,
+    Directory? cacheDir,
+    Directory? flutterRootDir,
+    Directory? buildDir,
     Map<String, String> defines = const <String, String>{},
     Map<String, String> inputs = const <String, String>{},
-    String engineVersion,
-    @required FileSystem fileSystem,
-    @required Logger logger,
-    @required Artifacts artifacts,
-    @required ProcessManager processManager,
+    String? engineVersion,
+    Platform? platform,
+    Usage? usage,
+    Analytics? analytics,
+    bool generateDartPluginRegistry = false,
+    bool useImplicitPubspecResolution = true,
+    required FileSystem fileSystem,
+    required Logger logger,
+    required Artifacts artifacts,
+    required ProcessManager processManager,
   }) {
     return Environment(
       projectDir: projectDir ?? testDirectory,
+      packageConfigPath: packageConfigPath ?? '.dart_tool/package_config.json',
       outputDir: outputDir ?? testDirectory,
       cacheDir: cacheDir ?? testDirectory,
       flutterRootDir: flutterRootDir ?? testDirectory,
@@ -381,28 +433,44 @@ class Environment {
       logger: logger,
       artifacts: artifacts,
       processManager: processManager,
+      platform: platform ?? FakePlatform(),
+      usage: usage ?? TestUsage(),
+      analytics: analytics ?? const NoOpAnalytics(),
       engineVersion: engineVersion,
+      generateDartPluginRegistry: generateDartPluginRegistry,
+      useImplicitPubspecResolution: useImplicitPubspecResolution,
     );
   }
 
   Environment._({
-    @required this.outputDir,
-    @required this.projectDir,
-    @required this.buildDir,
-    @required this.rootBuildDir,
-    @required this.cacheDir,
-    @required this.defines,
-    @required this.flutterRootDir,
-    @required this.processManager,
-    @required this.logger,
-    @required this.fileSystem,
-    @required this.artifacts,
-    @required this.engineVersion,
-    @required this.inputs,
+    required this.outputDir,
+    required this.projectDir,
+    required this.packageConfigPath,
+    required this.buildDir,
+    required this.rootBuildDir,
+    required this.cacheDir,
+    required this.defines,
+    required this.flutterRootDir,
+    required this.processManager,
+    required this.platform,
+    required this.logger,
+    required this.fileSystem,
+    required this.artifacts,
+    required this.usage,
+    required this.analytics,
+    this.engineVersion,
+    required this.inputs,
+    required this.generateDartPluginRegistry,
+    required this.useImplicitPubspecResolution,
   });
 
   /// The [Source] value which is substituted with the path to [projectDir].
   static const String kProjectDirectory = '{PROJECT_DIR}';
+
+  /// The [Source] value which is substituted with the path to the directory
+  /// that contains `.dart_tool/package_config.json1`.
+  /// That is the grand-parent of [BuildInfo.packageConfigPath].
+  static const String kWorkspaceDirectory = '{WORKSPACE_DIR}';
 
   /// The [Source] value which is substituted with the path to [buildDir].
   static const String kBuildDirectory = '{BUILD_DIR}';
@@ -422,10 +490,16 @@ class Environment {
   /// can be located.
   final Directory projectDir;
 
+  /// The path to the package configuration file to use for compilation.
+  ///
+  /// This is used by package:package_config to locate the actual package_config.json
+  /// file. If not provided, defaults to `.dart_tool/package_config.json`.
+  final String packageConfigPath;
+
   /// The `BUILD_DIR` environment variable.
   ///
   /// The root of the output directory where build step intermediates and
-  /// outputs are written. Current usages of assemble configure ths to be
+  /// outputs are written. Current usages of assemble configure this to be
   /// a unique directory under `.dart_tool/flutter_build`, though it can
   /// be placed anywhere. The uniqueness is only enforced by callers, and
   /// is currently done by hashing the build configuration.
@@ -468,20 +542,40 @@ class Environment {
 
   final ProcessManager processManager;
 
+  final Platform platform;
+
   final Logger logger;
 
   final Artifacts artifacts;
 
   final FileSystem fileSystem;
 
+  final Usage usage;
+
+  final Analytics analytics;
+
   /// The version of the current engine, or `null` if built with a local engine.
-  final String engineVersion;
+  final String? engineVersion;
+
+  /// Whether to generate the Dart plugin registry.
+  /// When [true], the main entrypoint is wrapped and the wrapper becomes
+  /// the new entrypoint.
+  final bool generateDartPluginRegistry;
+
+  /// Whether to generate a `.flutter-plugins` file and for Flutter i10n source
+  /// generation to default to `synthetic-package: true`.
+  final bool useImplicitPubspecResolution;
+
+  late final DepfileService depFileService = DepfileService(
+    logger: logger,
+    fileSystem: fileSystem,
+  );
 }
 
 /// The result information from the build system.
 class BuildResult {
   BuildResult({
-    @required this.success,
+    required this.success,
     this.exceptions = const <String, ExceptionMeasurement>{},
     this.performance = const <String, PerformanceMeasurement>{},
     this.inputFiles = const <File>[],
@@ -516,15 +610,15 @@ abstract class BuildSystem {
   Future<BuildResult> buildIncremental(
     Target target,
     Environment environment,
-    BuildResult previousBuild,
+    BuildResult? previousBuild,
   );
 }
 
 class FlutterBuildSystem extends BuildSystem {
   const FlutterBuildSystem({
-    @required FileSystem fileSystem,
-    @required Platform platform,
-    @required Logger logger,
+    required FileSystem fileSystem,
+    required Platform platform,
+    required Logger logger,
   }) : _fileSystem = fileSystem,
        _platform = platform,
        _logger = logger;
@@ -568,7 +662,7 @@ class FlutterBuildSystem extends BuildSystem {
       // Always persist the file cache to disk.
       fileCache.persist();
     }
-    // TODO(jonahwilliams): this is a bit of a hack, due to various parts of
+    // This is a bit of a hack, due to various parts of
     // the flutter tool writing these files unconditionally. Since Xcode uses
     // timestamps to track files, this leads to unnecessary rebuilds if they
     // are included. Once all the places that write these files have been
@@ -610,12 +704,12 @@ class FlutterBuildSystem extends BuildSystem {
   Future<BuildResult> buildIncremental(
     Target target,
     Environment environment,
-    BuildResult previousBuild,
+    BuildResult? previousBuild,
   ) async {
     environment.buildDir.createSync(recursive: true);
     environment.outputDir.createSync(recursive: true);
 
-    FileStore fileCache;
+    FileStore? fileCache;
     if (previousBuild == null || _incrementalFileStore[previousBuild] == null) {
       final File cacheFile = environment.buildDir.childFile(FileStore.kFileCache);
       fileCache = FileStore(
@@ -629,7 +723,7 @@ class FlutterBuildSystem extends BuildSystem {
     final Node node = target._toNode(environment);
     final _BuildInstance buildInstance = _BuildInstance(
       environment: environment,
-      fileCache: fileCache,
+      fileCache: fileCache!,
       buildSystemConfig: const BuildSystemConfig(),
       logger: _logger,
       fileSystem: _fileSystem,
@@ -667,9 +761,17 @@ class FlutterBuildSystem extends BuildSystem {
     FileSystem fileSystem,
     Map<String, File> currentOutputs,
   ) {
+    if (environment.defines[kXcodePreAction] == 'PrepareFramework') {
+      // If the current build is the PrepareFramework Xcode pre-action, skip
+      // updating the last build identifier and cleaning up the previous build
+      // since this build is not a complete build.
+      return;
+    }
+
     final String currentBuildId = fileSystem.path.basename(environment.buildDir.path);
     final File lastBuildIdFile = environment.outputDir.childFile('.last_build_id');
     if (!lastBuildIdFile.existsSync()) {
+      lastBuildIdFile.parent.createSync(recursive: true);
       lastBuildIdFile.writeAsStringSync(currentBuildId);
       // No config file, either output was cleaned or this is the first build.
       return;
@@ -693,29 +795,26 @@ class FlutterBuildSystem extends BuildSystem {
       // edited .last_config or deleted .dart_tool.
       return;
     }
-    final List<String> lastOutputs = (json.decode(outputsFile.readAsStringSync()) as List<Object>)
+    final List<String> lastOutputs = (json.decode(outputsFile.readAsStringSync()) as List<Object?>)
       .cast<String>();
     for (final String lastOutput in lastOutputs) {
       if (!currentOutputs.containsKey(lastOutput)) {
         final File lastOutputFile = fileSystem.file(lastOutput);
-        if (lastOutputFile.existsSync()) {
-          lastOutputFile.deleteSync();
-        }
+        ErrorHandlingFileSystem.deleteIfExists(lastOutputFile);
       }
     }
   }
 }
 
-
 /// An active instance of a build.
 class _BuildInstance {
   _BuildInstance({
-    this.environment,
-    this.fileCache,
-    this.buildSystemConfig,
-    this.logger,
-    this.fileSystem,
-    Platform platform,
+    required this.environment,
+    required this.fileCache,
+    required this.buildSystemConfig,
+    required this.logger,
+    required this.fileSystem,
+    Platform? platform,
   })
     : resourcePool = Pool(buildSystemConfig.resourcePoolSize ?? platform?.numberOfProcessors ?? 1);
 
@@ -777,7 +876,7 @@ class _BuildInstance {
       // If we're missing a depfile, wait until after evaluating the target to
       // compute changes.
       final bool canSkip = !node.missingDepfile &&
-        await node.computeChanges(environment, fileCache, fileSystem, logger);
+        node.computeChanges(environment, fileCache, fileSystem, logger);
 
       if (canSkip) {
         skipped = true;
@@ -807,11 +906,11 @@ class _BuildInstance {
       // If we were missing the depfile, resolve input files after executing the
       // target so that all file hashes are up to date on the next run.
       if (node.missingDepfile) {
-        await fileCache.diffFileList(node.inputs);
+        fileCache.diffFileList(node.inputs);
       }
 
       // Always update hashes for output files.
-      await fileCache.diffFileList(node.outputs);
+      fileCache.diffFileList(node.outputs);
       node.target._writeStamp(node.inputs, node.outputs, environment);
       updateGraph();
 
@@ -822,18 +921,14 @@ class _BuildInstance {
           continue;
         }
         final File previousFile = fileSystem.file(previousOutput);
-        if (previousFile.existsSync()) {
-          previousFile.deleteSync();
-        }
+        ErrorHandlingFileSystem.deleteIfExists(previousFile);
       }
     } on Exception catch (exception, stackTrace) {
-      // TODO(jonahwilliams): throw specific exception for expected errors to mark
-      // as non-fatal. All others should be fatal.
       node.target.clearStamp(environment);
       succeeded = false;
       skipped = false;
       exceptionMeasurements[node.target.name] = ExceptionMeasurement(
-          node.target.name, exception, stackTrace);
+          node.target.name, exception, stackTrace, fatal: true);
     } finally {
       resource.release();
       stopwatch.stop();
@@ -842,7 +937,7 @@ class _BuildInstance {
         elapsedMilliseconds: stopwatch.elapsedMilliseconds,
         skipped: skipped,
         succeeded: succeeded,
-        analyicsName: node.target.analyticsName,
+        analyticsName: node.target.analyticsName,
       );
     }
     return succeeded;
@@ -854,7 +949,7 @@ class ExceptionMeasurement {
   ExceptionMeasurement(this.target, this.exception, this.stackTrace, {this.fatal = false});
 
   final String target;
-  final dynamic exception;
+  final Object? exception;
   final StackTrace stackTrace;
 
   /// Whether this exception was a fatal build system error.
@@ -867,18 +962,18 @@ class ExceptionMeasurement {
 /// Helper class to collect measurement data.
 class PerformanceMeasurement {
   PerformanceMeasurement({
-    @required this.target,
-    @required this.elapsedMilliseconds,
-    @required this.skipped,
-    @required this.succeeded,
-    @required this.analyicsName,
+    required this.target,
+    required this.elapsedMilliseconds,
+    required this.skipped,
+    required this.succeeded,
+    required this.analyticsName,
   });
 
   final int elapsedMilliseconds;
   final String target;
   final bool skipped;
   final bool succeeded;
-  final String analyicsName;
+  final String analyticsName;
 }
 
 /// Check if there are any dependency cycles in the target.
@@ -924,49 +1019,85 @@ void verifyOutputDirectories(List<File> outputs, Environment environment, Target
 
 /// A node in the build graph.
 class Node {
-  Node(
+  factory Node(
+    Target target,
+    List<File> inputs,
+    List<File> outputs,
+    List<Node> dependencies,
+    String? buildKey,
+    Environment environment,
+    bool missingDepfile,
+  ) {
+    final File stamp = target._findStampFile(environment);
+    Map<String, Object?>? stampValues;
+
+    // If the stamp file doesn't exist, we haven't run this step before and
+    // all inputs were added.
+    if (stamp.existsSync()) {
+      final String content = stamp.readAsStringSync();
+      if (content.isEmpty) {
+        stamp.deleteSync();
+      } else {
+        try {
+          stampValues = castStringKeyedMap(json.decode(content));
+        } on FormatException {
+          // The json is malformed in some way.
+        }
+      }
+    }
+    if (stampValues != null) {
+      final String? previousBuildKey = stampValues['buildKey'] as String?;
+      final Object? stampInputs = stampValues['inputs'];
+      final Object? stampOutputs = stampValues['outputs'];
+      if (stampInputs is List<Object?> && stampOutputs is List<Object?>) {
+        final Set<String> previousInputs = stampInputs.whereType<String>().toSet();
+        final Set<String> previousOutputs = stampOutputs.whereType<String>().toSet();
+        return Node.withStamp(
+          target,
+          inputs,
+          previousInputs,
+          outputs,
+          previousOutputs,
+          dependencies,
+          buildKey,
+          previousBuildKey,
+          missingDepfile,
+        );
+      }
+    }
+    return Node.withNoStamp(
+      target,
+      inputs,
+      outputs,
+      dependencies,
+      buildKey,
+      missingDepfile,
+    );
+  }
+
+  Node.withNoStamp(
     this.target,
     this.inputs,
     this.outputs,
     this.dependencies,
-    Environment environment,
+    this.buildKey,
     this.missingDepfile,
-  ) {
-    final File stamp = target._findStampFile(environment);
+  ) : previousInputs = <String>{},
+      previousOutputs = <String>{},
+      previousBuildKey = null,
+      _dirty = true;
 
-    // If the stamp file doesn't exist, we haven't run this step before and
-    // all inputs were added.
-    if (!stamp.existsSync()) {
-      // No stamp file, not safe to skip.
-      _dirty = true;
-      return;
-    }
-    final String content = stamp.readAsStringSync();
-    // Something went wrong writing the stamp file.
-    if (content == null || content.isEmpty) {
-      stamp.deleteSync();
-      // Malformed stamp file, not safe to skip.
-      _dirty = true;
-      return;
-    }
-    Map<String, Object> values;
-    try {
-      values = castStringKeyedMap(json.decode(content));
-    } on FormatException {
-      // The json is malformed in some way.
-      _dirty = true;
-      return;
-    }
-    final Object inputs = values['inputs'];
-    final Object outputs = values['outputs'];
-    if (inputs is List<Object> && outputs is List<Object>) {
-      inputs?.cast<String>()?.forEach(previousInputs.add);
-      outputs?.cast<String>()?.forEach(previousOutputs.add);
-    } else {
-      // The json is malformed in some way.
-      _dirty = true;
-    }
-  }
+  Node.withStamp(
+    this.target,
+    this.inputs,
+    this.previousInputs,
+    this.outputs,
+    this.previousOutputs,
+    this.dependencies,
+    this.buildKey,
+    this.previousBuildKey,
+    this.missingDepfile,
+  ) : _dirty = false;
 
   /// The resolved input files.
   ///
@@ -977,6 +1108,11 @@ class Node {
   ///
   /// These files may not yet exist if the target hasn't run yet.
   final List<File> outputs;
+
+  /// The current build key of the target
+  ///
+  /// See `buildKey` in the `Target` class for more information.
+  final String? buildKey;
 
   /// Whether this node is missing a depfile.
   ///
@@ -991,29 +1127,42 @@ class Node {
   final List<Node> dependencies;
 
   /// Output file paths from the previous invocation of this build node.
-  final Set<String> previousOutputs = <String>{};
+  final Set<String> previousOutputs;
 
   /// Input file paths from the previous invocation of this build node.
-  final Set<String> previousInputs = <String>{};
+  final Set<String> previousInputs;
+
+  /// The buildKey from the previous invocation of this build node.
+  ///
+  /// See `buildKey` in the `Target` class for more information.
+  final String? previousBuildKey;
 
   /// One or more reasons why a task was invalidated.
   ///
   /// May be empty if the task was skipped.
-  final Set<InvalidatedReason> invalidatedReasons = <InvalidatedReason>{};
+  final Map<InvalidatedReasonKind, InvalidatedReason> invalidatedReasons = <InvalidatedReasonKind, InvalidatedReason>{};
 
   /// Whether this node needs an action performed.
   bool get dirty => _dirty;
   bool _dirty = false;
 
+  InvalidatedReason _invalidate(InvalidatedReasonKind kind) {
+    return invalidatedReasons[kind] ??= InvalidatedReason(kind);
+  }
+
   /// Collect hashes for all inputs to determine if any have changed.
   ///
   /// Returns whether this target can be skipped.
-  Future<bool> computeChanges(
+  bool computeChanges(
     Environment environment,
     FileStore fileStore,
     FileSystem fileSystem,
     Logger logger,
-  ) async {
+  ) {
+    if (buildKey != previousBuildKey) {
+      _invalidate(InvalidatedReasonKind.buildKeyChanged);
+      _dirty = true;
+    }
     final Set<String> currentOutputPaths = <String>{
       for (final File file in outputs) file.path,
     };
@@ -1028,11 +1177,12 @@ class Node {
       }
 
       final String absolutePath = file.path;
-      final String previousAssetKey = fileStore.previousAssetKeys[absolutePath];
+      final String? previousAssetKey = fileStore.previousAssetKeys[absolutePath];
       if (fileStore.currentAssetKeys.containsKey(absolutePath)) {
-        final String currentHash = fileStore.currentAssetKeys[absolutePath];
+        final String? currentHash = fileStore.currentAssetKeys[absolutePath];
         if (currentHash != previousAssetKey) {
-          invalidatedReasons.add(InvalidatedReason.inputChanged);
+          final InvalidatedReason reason = _invalidate(InvalidatedReasonKind.inputChanged);
+          reason.data.add(absolutePath);
           _dirty = true;
         }
       } else {
@@ -1046,22 +1196,25 @@ class Node {
       // output paths changed.
       if (!currentOutputPaths.contains(previousOutput)) {
         _dirty = true;
-        invalidatedReasons.add(InvalidatedReason.outputSetChanged);
+        final InvalidatedReason reason = _invalidate(InvalidatedReasonKind.outputSetChanged);
+        reason.data.add(previousOutput);
         // if this isn't a current output file there is no reason to compute the key.
         continue;
       }
       final File file = fileSystem.file(previousOutput);
       if (!file.existsSync()) {
-        invalidatedReasons.add(InvalidatedReason.outputMissing);
+        final InvalidatedReason reason = _invalidate(InvalidatedReasonKind.outputMissing);
+        reason.data.add(file.path);
         _dirty = true;
         continue;
       }
       final String absolutePath = file.path;
-      final String previousHash = fileStore.previousAssetKeys[absolutePath];
+      final String? previousHash = fileStore.previousAssetKeys[absolutePath];
       if (fileStore.currentAssetKeys.containsKey(absolutePath)) {
-        final String currentHash = fileStore.currentAssetKeys[absolutePath];
+        final String? currentHash = fileStore.currentAssetKeys[absolutePath];
         if (currentHash != previousHash) {
-          invalidatedReasons.add(InvalidatedReason.outputChanged);
+          final InvalidatedReason reason = _invalidate(InvalidatedReasonKind.outputChanged);
+          reason.data.add(absolutePath);
           _dirty = true;
         }
       } else {
@@ -1069,22 +1222,24 @@ class Node {
       }
     }
 
-    // If we depend on a file that doesnt exist on disk, mark the build as
+    // If we depend on a file that doesn't exist on disk, mark the build as
     // dirty. if the rule is not correctly specified, this will result in it
     // always being rerun.
     if (missingInputs.isNotEmpty) {
       _dirty = true;
       final String missingMessage = missingInputs.map((File file) => file.path).join(', ');
       logger.printTrace('invalidated build due to missing files: $missingMessage');
-      invalidatedReasons.add(InvalidatedReason.inputMissing);
+      final InvalidatedReason reason = _invalidate(InvalidatedReasonKind.inputMissing);
+      reason.data.addAll(missingInputs.map((File file) => file.path));
     }
 
     // If we have files to diff, compute them asynchronously and then
     // update the result.
     if (sourcesToDiff.isNotEmpty) {
-      final List<File> dirty = await fileStore.diffFileList(sourcesToDiff);
+      final List<File> dirty = fileStore.diffFileList(sourcesToDiff);
       if (dirty.isNotEmpty) {
-        invalidatedReasons.add(InvalidatedReason.inputChanged);
+        final InvalidatedReason reason = _invalidate(InvalidatedReasonKind.inputChanged);
+        reason.data.addAll(dirty.map((File file) => file.path));
         _dirty = true;
       }
     }
@@ -1092,8 +1247,29 @@ class Node {
   }
 }
 
+/// Data about why a target was re-run.
+class InvalidatedReason {
+  InvalidatedReason(this.kind);
+
+  final InvalidatedReasonKind kind;
+  /// Absolute file paths of inputs or outputs, depending on [kind].
+  final List<String> data = <String>[];
+
+  @override
+  String toString() {
+    return switch (kind) {
+      InvalidatedReasonKind.inputMissing => 'The following inputs were missing: ${data.join(',')}',
+      InvalidatedReasonKind.inputChanged => 'The following inputs have updated contents: ${data.join(',')}',
+      InvalidatedReasonKind.outputChanged => 'The following outputs have updated contents: ${data.join(',')}',
+      InvalidatedReasonKind.outputMissing => 'The following outputs were missing: ${data.join(',')}',
+      InvalidatedReasonKind.outputSetChanged => 'The following outputs were removed from the output set: ${data.join(',')}',
+      InvalidatedReasonKind.buildKeyChanged => 'The target build key changed.',
+    };
+  }
+}
+
 /// A description of why a target was rerun.
-enum InvalidatedReason {
+enum InvalidatedReasonKind {
   /// An input file that was expected is missing. This can occur when using
   /// depfile dependencies, or if a target is incorrectly specified.
   inputMissing,
@@ -1109,4 +1285,7 @@ enum InvalidatedReason {
 
   /// The set of expected output files changed.
   outputSetChanged,
+
+  /// The build key changed
+  buildKeyChanged,
 }

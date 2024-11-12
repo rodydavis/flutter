@@ -2,17 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/widgets.dart';
+import 'package:flutter_test/flutter_test.dart';
+
 import 'test_widgets.dart';
 
 class StatefulWrapper extends StatefulWidget {
   const StatefulWrapper({
-    Key key,
-    this.child,
-  }) : super(key: key);
+    super.key,
+    required this.child,
+  });
 
   final Widget child;
 
@@ -37,9 +36,9 @@ class StatefulWrapperState extends State<StatefulWrapper> {
 
 class Wrapper extends StatelessWidget {
   const Wrapper({
-    Key key,
-    this.child,
-  }) : super(key: key);
+    super.key,
+    required this.child,
+  });
 
   final Widget child;
 
@@ -51,7 +50,6 @@ class Wrapper extends StatelessWidget {
 
 void main() {
   testWidgets('Calling setState on a widget that moves into a LayoutBuilder in the same frame', (WidgetTester tester) async {
-    StatefulWrapperState statefulWrapper;
     final Widget inner = Wrapper(
       child: StatefulWrapper(
         key: GlobalKey(),
@@ -64,7 +62,7 @@ void main() {
       }),
       right: inner,
     ));
-    statefulWrapper = tester.state(find.byType(StatefulWrapper));
+    final StatefulWrapperState statefulWrapper = tester.state(find.byType(StatefulWrapper));
     expect(statefulWrapper.built, true);
     statefulWrapper.built = false;
 

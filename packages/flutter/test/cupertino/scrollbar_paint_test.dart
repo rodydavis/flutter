@@ -2,12 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'package:flutter/cupertino.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import '../rendering/mock_canvas.dart';
 
 const Color _kScrollbarColor = Color(0x59000000);
 
@@ -69,7 +65,7 @@ void main() {
             ),
             child: CupertinoScrollbar(
               child: ListView(
-                children: const <Widget> [SizedBox(width: 4000, height: 4000)]
+                children: const <Widget>[SizedBox(width: 4000, height: 4000)],
               ),
             ),
           ),

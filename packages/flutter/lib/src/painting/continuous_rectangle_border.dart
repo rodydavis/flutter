@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+/// @docImport 'rounded_rectangle_border.dart';
+library;
 
 import 'dart:math' as math;
 
@@ -34,13 +36,11 @@ import 'edge_insets.dart';
 ///    radius in a step function instead of gradually like the
 ///    [ContinuousRectangleBorder].
 class ContinuousRectangleBorder extends OutlinedBorder {
-  /// The arguments must not be null.
+  /// Creates a [ContinuousRectangleBorder].
   const ContinuousRectangleBorder({
-    BorderSide side = BorderSide.none,
+    super.side,
     this.borderRadius = BorderRadius.zero,
-  }) : assert(side != null),
-       assert(borderRadius != null),
-       super(side: side);
+  });
 
   /// The radius for each corner.
   ///
@@ -48,7 +48,7 @@ class ContinuousRectangleBorder extends OutlinedBorder {
   /// [getOuterPath].
   final BorderRadiusGeometry borderRadius;
 
-   @override
+  @override
   EdgeInsetsGeometry get dimensions => EdgeInsets.all(side.width);
 
   @override
@@ -61,7 +61,6 @@ class ContinuousRectangleBorder extends OutlinedBorder {
 
   @override
   ShapeBorder? lerpFrom(ShapeBorder? a, double t) {
-    assert(t != null);
     if (a is ContinuousRectangleBorder) {
       return ContinuousRectangleBorder(
         side: BorderSide.lerp(a.side, side, t),
@@ -73,7 +72,6 @@ class ContinuousRectangleBorder extends OutlinedBorder {
 
   @override
   ShapeBorder? lerpTo(ShapeBorder? b, double t) {
-    assert(t != null);
     if (b is ContinuousRectangleBorder) {
       return ContinuousRectangleBorder(
         side: BorderSide.lerp(side, b.side, t),
@@ -93,7 +91,7 @@ class ContinuousRectangleBorder extends OutlinedBorder {
     final double top = rrect.top;
     final double bottom = rrect.bottom;
     //  Radii will be clamped to the value of the shortest side
-    /// of [rrect] to avoid strange tie-fighter shapes.
+    // of rrect to avoid strange tie-fighter shapes.
     final double tlRadiusX =
       math.max(0.0, _clampToShortest(rrect, rrect.tlRadiusX));
     final double tlRadiusY =
@@ -134,7 +132,7 @@ class ContinuousRectangleBorder extends OutlinedBorder {
   }
 
   @override
-  ContinuousRectangleBorder copyWith({ BorderSide? side, BorderRadius? borderRadius }) {
+  ContinuousRectangleBorder copyWith({ BorderSide? side, BorderRadiusGeometry? borderRadius }) {
     return ContinuousRectangleBorder(
       side: side ?? this.side,
       borderRadius: borderRadius ?? this.borderRadius,
@@ -143,30 +141,32 @@ class ContinuousRectangleBorder extends OutlinedBorder {
 
   @override
   void paint(Canvas canvas, Rect rect, { TextDirection? textDirection }) {
-    if (rect.isEmpty)
+    if (rect.isEmpty) {
       return;
+    }
     switch (side.style) {
       case BorderStyle.none:
         break;
       case BorderStyle.solid:
-        final Path path = getOuterPath(rect, textDirection: textDirection);
-        final Paint paint = side.toPaint();
-        canvas.drawPath(path, paint);
-        break;
+        canvas.drawPath(
+          getOuterPath(rect, textDirection: textDirection),
+          side.toPaint(),
+        );
     }
   }
 
   @override
   bool operator ==(Object other) {
-    if (other.runtimeType != runtimeType)
+    if (other.runtimeType != runtimeType) {
       return false;
+    }
     return other is ContinuousRectangleBorder
         && other.side == side
         && other.borderRadius == borderRadius;
   }
 
   @override
-  int get hashCode => hashValues(side, borderRadius);
+  int get hashCode => Object.hash(side, borderRadius);
 
   @override
   String toString() {

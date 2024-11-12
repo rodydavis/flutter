@@ -2,15 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.10
+/// @docImport 'matchers.dart';
+library;
+
 import 'dart:convert';
-import 'dart:html' as html;
+import 'dart:js_interop';
 import 'dart:typed_data';
 
-// ignore: deprecated_member_use
-import 'package:test_api/test_api.dart' as test_package show TestFailure;
+import 'package:matcher/expect.dart' show fail;
 
 import 'goldens.dart';
+import 'web.dart' as web;
 
 /// An unsupported [GoldenFileComparator] that exists for API compatibility.
 class LocalFileComparator extends GoldenFileComparator {
@@ -19,7 +21,7 @@ class LocalFileComparator extends GoldenFileComparator {
     throw UnsupportedError('LocalFileComparator is not supported on the web.');
   }
 
-   @override
+  @override
   Future<void> update(Uri golden, Uint8List imageBytes) {
     throw UnsupportedError('LocalFileComparator is not supported on the web.');
   }
@@ -40,15 +42,14 @@ Future<ComparisonResult> compareLists(List<int> test, List<int> master) async {
 ///
 /// See also:
 ///
-///   * [matchesGoldenFile], the function from [flutter_test] that invokes the
-///    comparator.
+///   * [matchesGoldenFile], the function that invokes the comparator.
 class DefaultWebGoldenComparator extends WebGoldenComparator {
-  /// Creates a new [DefaultWebGoldenComparator] for the specified [testFile].
+  /// Creates a new [DefaultWebGoldenComparator] for the specified [testUri].
   ///
   /// Golden file keys will be interpreted as file paths relative to the
-  /// directory in which [testFile] resides.
+  /// directory in which [testUri] resides.
   ///
-  /// The [testFile] URL must represent a file.
+  /// The [testUri] must represent a file.
   DefaultWebGoldenComparator(this.testUri);
 
   /// The test file currently being executed.
@@ -60,27 +61,56 @@ class DefaultWebGoldenComparator extends WebGoldenComparator {
   @override
   Future<bool> compare(double width, double height, Uri golden) async {
     final String key = golden.toString();
-    final html.HttpRequest request = await html.HttpRequest.request(
-      'flutter_goldens',
-      method: 'POST',
-      sendData: json.encode(<String, Object>{
-        'testUri': testUri.toString(),
-        'key': key.toString(),
-        'width': width.round(),
-        'height': height.round(),
-      }),
-    );
-    final String response = request.response as String;
-    if (response == 'true') {
+    final web.Response response = await web.window.fetch(
+      'flutter_goldens'.toJS,
+      web.RequestInit(
+        method: 'POST',
+        body: json.encode(<String, Object>{
+          'testUri': testUri.toString(),
+          'key': key,
+          'width': width.round(),
+          'height': height.round(),
+        }).toJS,
+      )
+    ).toDart;
+    final String responseText = (await response.text().toDart).toDart;
+    if (responseText == 'true') {
       return true;
-    } else {
-      throw test_package.TestFailure(response);
     }
+    fail(responseText);
   }
 
   @override
   Future<void> update(double width, double height, Uri golden) async {
     // Update is handled on the server side, just use the same logic here
     await compare(width, height, golden);
+  }
+
+  @override
+  Future<bool> compareBytes(Uint8List bytes, Uri golden) async {
+    final String key = golden.toString();
+    final String bytesEncoded = base64.encode(bytes);
+    final web.Response response = await web.window.fetch(
+      'flutter_goldens'.toJS,
+      web.RequestInit(
+        method: 'POST',
+        body: json.encode(<String, Object>{
+          'testUri': testUri.toString(),
+          'key': key,
+          'bytes': bytesEncoded,
+        }).toJS,
+      )
+    ).toDart;
+    final String responseText = (await response.text().toDart).toDart;
+    if (responseText == 'true') {
+      return true;
+    }
+    fail(responseText);
+  }
+
+  @override
+  Future<void> updateBytes(Uint8List bytes, Uri golden) async {
+    // Update is handled on the server side, just use the same logic here
+    await compareBytes(bytes, golden);
   }
 }

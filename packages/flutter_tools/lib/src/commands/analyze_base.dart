@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:async';
-
 import 'package:args/args.dart';
 import 'package:meta/meta.dart';
 import 'package:process/process.dart';
@@ -17,27 +15,23 @@ import '../base/platform.dart';
 import '../base/terminal.dart';
 import '../base/utils.dart';
 import '../cache.dart';
-import '../dart/analysis.dart';
 import '../globals.dart' as globals;
 
 /// Common behavior for `flutter analyze` and `flutter analyze --watch`
 abstract class AnalyzeBase {
   AnalyzeBase(this.argResults, {
-    @required this.repoRoots,
-    @required this.repoPackages,
-    @required this.fileSystem,
-    @required this.logger,
-    @required this.platform,
-    @required this.processManager,
-    @required this.terminal,
-    @required this.experiments,
-    @required this.artifacts,
+    required this.repoPackages,
+    required this.fileSystem,
+    required this.logger,
+    required this.platform,
+    required this.processManager,
+    required this.terminal,
+    required this.artifacts,
+    required this.suppressAnalytics,
   });
 
   /// The parsed argument results for execution.
   final ArgResults argResults;
-  @protected
-  final List<String> repoRoots;
   @protected
   final List<Directory> repoPackages;
   @protected
@@ -51,9 +45,12 @@ abstract class AnalyzeBase {
   @protected
   final Terminal terminal;
   @protected
-  final List<String> experiments;
-  @protected
   final Artifacts artifacts;
+  @protected
+  final bool suppressAnalytics;
+
+  @protected
+  String get flutterRoot => globals.fs.path.absolute(Cache.flutterRoot!);
 
   /// Called by [AnalyzeCommand] to start the analysis process.
   Future<void> analyze();
@@ -74,54 +71,30 @@ abstract class AnalyzeBase {
     }
   }
 
-  void writeBenchmark(Stopwatch stopwatch, int errorCount, int membersMissingDocumentation) {
+  void writeBenchmark(Stopwatch stopwatch, int errorCount) {
     const String benchmarkOut = 'analysis_benchmark.json';
     final Map<String, dynamic> data = <String, dynamic>{
       'time': stopwatch.elapsedMilliseconds / 1000.0,
       'issues': errorCount,
-      'missingDartDocs': membersMissingDocumentation,
     };
     fileSystem.file(benchmarkOut).writeAsStringSync(toPrettyJson(data));
     logger.printStatus('Analysis benchmark written to $benchmarkOut ($data).');
   }
 
   bool get isFlutterRepo => argResults['flutter-repo'] as bool;
-  String get sdkPath => argResults['dart-sdk'] as String ?? artifacts.getArtifactPath(Artifact.engineDartSdkPath);
+  String get sdkPath {
+    final String? dartSdk = argResults['dart-sdk'] as String?;
+    return dartSdk ?? artifacts.getArtifactPath(Artifact.engineDartSdkPath);
+  }
   bool get isBenchmarking => argResults['benchmark'] as bool;
-  bool get isDartDocs => argResults['dartdocs'] as bool;
-
-  static int countMissingDartDocs(List<AnalysisError> errors) {
-    return errors.where((AnalysisError error) {
-      return error.code == 'public_member_api_docs';
-    }).length;
-  }
-
-  static String generateDartDocMessage(int undocumentedMembers) {
-    String dartDocMessage;
-
-    assert(undocumentedMembers >= 0);
-    switch (undocumentedMembers) {
-      case 0:
-        dartDocMessage = 'all public member have documentation';
-        break;
-      case 1:
-        dartDocMessage = 'one public member lacks documentation';
-        break;
-      default:
-        dartDocMessage = '$undocumentedMembers public members lack documentation';
-    }
-
-    return dartDocMessage;
-  }
+  String? get protocolTrafficLog => argResults['protocol-traffic-log'] as String?;
 
   /// Generate an analysis summary for both [AnalyzeOnce], [AnalyzeContinuously].
   static String generateErrorsMessage({
-    @required int issueCount,
-    int issueDiff,
-    int files,
-    @required String seconds,
-    int undocumentedMembers = 0,
-    String dartDocMessage = '',
+    required int issueCount,
+    int? issueDiff,
+    int? files,
+    required String seconds,
   }) {
     final StringBuffer errorsMessage = StringBuffer(issueCount > 0
       ? '$issueCount ${pluralize('issue', issueCount)} found.'
@@ -140,12 +113,7 @@ abstract class AnalyzeBase {
     if (files != null) {
       errorsMessage.write(' • analyzed $files ${pluralize('file', files)}');
     }
-
-    if (undocumentedMembers > 0) {
-      errorsMessage.write(' (ran in ${seconds}s; $dartDocMessage)');
-    } else {
-      errorsMessage.write(' (ran in ${seconds}s)');
-    }
+    errorsMessage.write(' (ran in ${seconds}s)');
     return errorsMessage.toString();
   }
 }
@@ -154,7 +122,7 @@ class PackageDependency {
   // This is a map from dependency targets (lib directories) to a list
   // of places that ask for that target (.packages or pubspec.yaml files)
   Map<String, List<String>> values = <String, List<String>>{};
-  String canonicalSource;
+  String? canonicalSource;
   void addCanonicalCase(String packagePath, String pubSpecYamlPath) {
     assert(canonicalSource == null);
     add(packagePath, pubSpecYamlPath);
@@ -165,11 +133,12 @@ class PackageDependency {
   }
   bool get hasConflict => values.length > 1;
   bool get hasConflictAffectingFlutterRepo {
-    assert(globals.fs.path.isAbsolute(Cache.flutterRoot));
+    final String? flutterRoot = Cache.flutterRoot;
+    assert(flutterRoot != null && globals.fs.path.isAbsolute(flutterRoot));
     for (final List<String> targetSources in values.values) {
       for (final String source in targetSources) {
         assert(globals.fs.path.isAbsolute(source));
-        if (globals.fs.path.isWithin(Cache.flutterRoot, source)) {
+        if (globals.fs.path.isWithin(flutterRoot!, source)) {
           return true;
         }
       }
@@ -179,12 +148,13 @@ class PackageDependency {
   void describeConflict(StringBuffer result) {
     assert(hasConflict);
     final List<String> targets = values.keys.toList();
-    targets.sort((String a, String b) => values[b].length.compareTo(values[a].length));
+    targets.sort((String a, String b) => values[b]!.length.compareTo(values[a]!.length));
     for (final String target in targets) {
-      final int count = values[target].length;
+      final List<String> targetList = values[target]!;
+      final int count = targetList.length;
       result.writeln('  $count ${count == 1 ? 'source wants' : 'sources want'} "$target":');
       bool canonical = false;
-      for (final String source in values[target]) {
+      for (final String source in targetList) {
         result.writeln('    $source');
         if (source == canonicalSource) {
           canonical = true;
@@ -199,41 +169,12 @@ class PackageDependency {
 }
 
 class PackageDependencyTracker {
-  /// Packages whose source is defined in the vended SDK.
-  static const List<String> _vendedSdkPackages = <String>['analyzer', 'front_end', 'kernel'];
-
   // This is a map from package names to objects that track the paths
   // involved (sources and targets).
   Map<String, PackageDependency> packages = <String, PackageDependency>{};
 
   PackageDependency getPackageDependency(String packageName) {
     return packages.putIfAbsent(packageName, () => PackageDependency());
-  }
-
-  /// Read the .packages file in [directory] and add referenced packages to [dependencies].
-  void addDependenciesFromPackagesFileIn(Directory directory) {
-    final String dotPackagesPath = globals.fs.path.join(directory.path, '.packages');
-    final File dotPackages = globals.fs.file(dotPackagesPath);
-    if (dotPackages.existsSync()) {
-      // this directory has opinions about what we should be using
-      final Iterable<String> lines = dotPackages
-        .readAsStringSync()
-        .split('\n')
-        .where((String line) => !line.startsWith(RegExp(r'^ *#')));
-      for (final String line in lines) {
-        final int colon = line.indexOf(':');
-        if (colon > 0) {
-          final String packageName = line.substring(0, colon);
-          final String packagePath = globals.fs.path.fromUri(line.substring(colon+1));
-          // Ensure that we only add `analyzer` and dependent packages defined in the vended SDK (and referred to with a local
-          // globals.fs.path. directive). Analyzer package versions reached via transitive dependencies (e.g., via `test`) are ignored
-          // since they would produce spurious conflicts.
-          if (!_vendedSdkPackages.contains(packageName) || packagePath.startsWith('..')) {
-            add(packageName, globals.fs.path.normalize(globals.fs.path.absolute(directory.path, packagePath)), dotPackagesPath);
-          }
-        }
-      }
-    }
   }
 
   void addCanonicalCase(String packageName, String packagePath, String pubSpecYamlPath) {
@@ -265,10 +206,8 @@ class PackageDependencyTracker {
           throwToolExit('pubspec.yaml is malformed.');
         }
       }
-      dependencies.addDependenciesFromPackagesFileIn(directory);
     }
 
-    // prepare a union of all the .packages files
     if (dependencies.hasConflicts) {
       final StringBuffer message = StringBuffer();
       message.writeln(dependencies.generateConflictReport());
@@ -299,18 +238,37 @@ class PackageDependencyTracker {
   String generateConflictReport() {
     assert(hasConflicts);
     final StringBuffer result = StringBuffer();
-    for (final String package in packages.keys.where((String package) => packages[package].hasConflict)) {
-      result.writeln('Package "$package" has conflicts:');
-      packages[package].describeConflict(result);
-    }
+    packages.forEach((String package, PackageDependency dependency) {
+      if (dependency.hasConflict) {
+        result.writeln('Package "$package" has conflicts:');
+        dependency.describeConflict(result);
+      }
+    });
     return result.toString();
   }
 
   Map<String, String> asPackageMap() {
     final Map<String, String> result = <String, String>{};
-    for (final String package in packages.keys) {
-      result[package] = packages[package].target;
-    }
+    packages.forEach((String package, PackageDependency dependency) {
+      result[package] = dependency.target;
+    });
     return result;
   }
+}
+
+/// Find directories or files from argResults.rest.
+Set<String> findDirectories(ArgResults argResults, FileSystem fileSystem) {
+  final Set<String> items = Set<String>.of(argResults.rest
+      .map<String>((String path) => fileSystem.path.canonicalize(path)));
+  if (items.isNotEmpty) {
+    for (final String item in items) {
+      final FileSystemEntityType type = fileSystem.typeSync(item);
+
+      if (type == FileSystemEntityType.notFound) {
+        throwToolExit("You provided the path '$item', however it does not exist on disk");
+      }
+    }
+  }
+
+  return items;
 }

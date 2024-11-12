@@ -20,5 +20,12 @@
   "pasteButtonLabel": "Beillesztés",
   "selectAllButtonLabel": "Összes kijelölése",
   "tabSemanticsLabel": "$tabCount/$tabIndex. lap",
-  "modalBarrierDismissLabel": "Elvetés"
+  "modalBarrierDismissLabel": "Elvetés",
+  "searchTextFieldPlaceholderLabel": "Keresés",
+  "noSpellCheckReplacementsLabel": "Nem található javítás",
+  "menuDismissLabel": "Menü bezárása",
+  "lookUpButtonLabel": "Felfelé nézés",
+  "searchWebButtonLabel": "Keresés az interneten",
+  "shareButtonLabel": "Megosztás…",
+  "clearButtonLabel": "Törlés"
 }
