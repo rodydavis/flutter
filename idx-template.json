@@ -1,0 +1,8 @@
+{
+  "name": "Flutter",
+  "description": "Flutter create template",
+  "categories": ["Mobile"],
+  "icon": "https://www.gstatic.com/images/branding/productlogos/flutter/v6/192px.svg",
+  "website": "https://github.com/flutter/flutter",
+  "publisher": "Google LLC"
+}
