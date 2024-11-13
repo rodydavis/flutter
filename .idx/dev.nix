@@ -22,7 +22,7 @@
     workspace = {
       # Runs when a workspace is first created with this `dev.nix` file
       onCreate = {
-        installDependencies = "./bin/flutter pub get";
+        installDependencies = "cd examples/hello_world && flutter pub get";
         build-flutter = ''
           cd /home/user/myapp/android
 
@@ -55,12 +55,12 @@
       enable = true;
       previews = {
         web = {
-          command = ["./bin/flutter" "run" "--machine" "-d" "web-server" "--web-hostname" "0.0.0.0" "--web-port" "$PORT"];
+          command = ["flutter" "run" "--machine" "-d" "web-server" "--web-hostname" "0.0.0.0" "--web-port" "$PORT"];
           manager = "flutter";
           cwd = "examples/hello_world";
         };
         android = {
-          command = ["./bin/flutter" "run" "--machine" "-d" "android" "-d" "localhost:5555"];
+          command = ["flutter" "run" "--machine" "-d" "android" "-d" "localhost:5555"];
           manager = "flutter";
           cwd = "examples/hello_world";
         };
